@@ -1,15 +1,19 @@
 [package]
-name = "wunc"
+name = "webfunc"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+actix-http = "3.9.0"
+actix-web = "4.9.0"
 anyhow = "1.0.91"
-axum = "0.7.7"
+async-trait = "0.1.83"
+bytes = "1.9.0"
+env_logger = "0.11.5"
+futures = "0.3"
+futures-util = { version = "0.3", default-features = false }
+thiserror = "1.0.65"
 tokio = "1.41.0"
-tower-http = { version = "0.5.2", features = ["trace"] }
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 wasmtime = "26.0.0"
 wasmtime-wasi = "26.0.0"
 

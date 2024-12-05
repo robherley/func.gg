@@ -1,43 +1,40 @@
-use axum::{http::StatusCode, response::IntoResponse, routing::get, Router};
-use tower_http::trace::{self, TraceLayer};
-use tracing::{info, Level};
-use wunc::Runtime;
+use actix_web::{
+    get, http, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder,
+    ResponseError, Result,
+};
+use futures::StreamExt;
+use webfunc::{runtime::Sandbox, stream};
 
-macro_rules! fail {
-    ($c:expr, $e:expr) => {
-        return ($c, $e.to_string())
-    };
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("webfunc error: {0}")]
+    Runtime(#[from] webfunc::runtime::Error),
 }
 
-async fn handle() -> impl IntoResponse {
-    let binary = include_bytes!("../handler.component.wasm");
-
-    let mut runtime = match Runtime::new(binary) {
-        Ok(v) => v,
-        Err(e) => fail!(StatusCode::INTERNAL_SERVER_ERROR, e),
-    };
-
-    let (response, store) = match runtime.handle().await {
-        Ok(v) => v,
-        Err(e) => fail!(StatusCode::INTERNAL_SERVER_ERROR, e),
-    };
-
-    let data = match std::str::from_utf8(&store.data().data) {
-        Ok(s) => s.to_string(),
-        Err(e) => fail!(StatusCode::INTERNAL_SERVER_ERROR, e),
-    };
-
-    let code = match StatusCode::try_from(response.status) {
-        Ok(v) => v,
-        Err(e) => fail!(StatusCode::INTERNAL_SERVER_ERROR, e),
-    };
-
-    (code, data)
+impl ResponseError for Error {
+    fn status_code(&self) -> http::StatusCode {
+        http::StatusCode::INTERNAL_SERVER_ERROR
+    }
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt().compact().init();
+#[post("/")]
+async fn handle(body: web::Payload) -> Result<impl Responder, Error> {
+    let wasm = include_bytes!("/Users/robherley/dev/webfunc-handler/dist/main.wasm");
+
+    // let mut runtime = Sandbox::new(wasm)?;
+    // runtime.handle(body.into()).await?;
+
+    Ok("done")
+}
+
+#[get("/")]
+async fn hello() -> impl Responder {
+    "Hello world!"
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    env_logger::init_from_env(env_logger::Env::default().default_filter_or("info"));
 
     let addr = format!(
         "{}:{}",
@@ -45,15 +42,13 @@ async fn main() -> anyhow::Result<()> {
         std::env::var("PORT").unwrap_or("8080".into()),
     );
 
-    let router = Router::new().route("/", get(handle)).layer(
-        TraceLayer::new_for_http()
-            .make_span_with(trace::DefaultMakeSpan::new().level(Level::INFO))
-            .on_response(trace::DefaultOnResponse::new().level(Level::INFO)),
-    );
-
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    info!("listening on {}", listener.local_addr()?);
-    axum::serve(listener, router).await?;
-
-    Ok(())
+    HttpServer::new(|| {
+        App::new()
+            .wrap(Logger::new("%r %s %Dms"))
+            .service(hello)
+            .service(handle)
+    })
+    .bind(addr)?
+    .run()
+    .await
 }

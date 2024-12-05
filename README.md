@@ -1,5 +1,5 @@
-# wunc
+# webfunc
 
-w[asm] + [f]unc[tions] = wunc
+web[assembly] + func[tions] = webfunc
 
 an experimental functions runtime based on webassembly
