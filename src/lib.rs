@@ -1,2 +1,2 @@
 pub mod runtime;
-pub mod stream;
+pub mod streams;

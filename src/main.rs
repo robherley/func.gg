@@ -1,9 +1,11 @@
 use actix_web::{
-    get, http, middleware::Logger, post, web, App, HttpServer, Responder, ResponseError, Result,
+    get, http, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder,
+    ResponseError, Result,
 };
 use bytes::Bytes;
-use func_gg::runtime::handler;
+use func_gg::{runtime::handler, streams::RequestStream};
 use futures::StreamExt;
+use wiggle::tracing::warn;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -21,28 +23,29 @@ impl ResponseError for Error {
 async fn handle(mut body: web::Payload) -> Result<impl Responder, Error> {
     let binary = include_bytes!("/Users/robherley/dev/webfunc-handler/dist/main.wasm");
 
-    let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(1);
+    let (req_tx, req_rx) = tokio::sync::mpsc::channel::<Bytes>(1);
 
     actix_web::rt::spawn(async move {
         while let Some(item) = body.next().await {
             match item {
                 Ok(chunk) => {
-                    if let Err(e) = tx.send(chunk).await {
-                        eprintln!("Error while sending chunk: {:?}", e);
+                    if let Err(e) = req_tx.send(chunk).await {
+                        warn!("unable to send chunk: {:?}", e);
                         break;
                     }
                 }
                 Err(e) => {
-                    eprintln!("Error while reading body: {:?}", e);
+                    warn!("payload error: {:?}", e);
                     break;
                 }
             }
         }
     });
 
-    handler(binary, rx).await?;
+    handler(binary, RequestStream::new(req_rx)).await?;
 
-    Ok("done")
+    // Ok(HttpResponse::Ok().streaming(stream))
+    Ok(HttpResponse::Ok().body("ok"))
 }
 
 #[get("/")]

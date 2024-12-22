@@ -1,8 +1,9 @@
 use wasmtime::*;
+use wasmtime_wasi::pipe::AsyncWriteStream;
 use wasmtime_wasi::preview1::{self, WasiP1Ctx};
-use wasmtime_wasi::{AsyncStdinStream, WasiCtxBuilder};
+use wasmtime_wasi::{AsyncStdinStream, AsyncStdoutStream, WasiCtxBuilder};
 
-use crate::stream::ReceiverStdin;
+use crate::streams::RequestStream;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -18,10 +19,7 @@ pub enum Error {
     Other(String),
 }
 
-pub async fn handler(
-    binary: impl AsRef<[u8]>,
-    rx: tokio::sync::mpsc::Receiver<bytes::Bytes>,
-) -> Result<(), Error> {
+pub async fn handler(binary: impl AsRef<[u8]>, req: RequestStream) -> Result<(), Error> {
     let mut cfg = wasmtime::Config::default();
     cfg.debug_info(true);
     cfg.async_support(true);
@@ -30,11 +28,9 @@ pub async fn handler(
     preview1::add_to_linker_async(&mut linker, |t| t)?;
     let module = Module::new(&engine, binary)?;
 
-    let stdin: AsyncStdinStream = ReceiverStdin::new(rx).into();
-
     let wasi_ctx = WasiCtxBuilder::new()
         .env("WEBFUNC", "1")
-        .stdin(stdin)
+        .stdin(AsyncStdinStream::from(req))
         .inherit_stdout()
         .inherit_stderr()
         .build_p1();
