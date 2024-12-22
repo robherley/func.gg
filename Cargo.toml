@@ -1,19 +1,20 @@
 [package]
-name = "webfunc"
+name = "func_gg"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 actix-http = "3.9.0"
 actix-web = "4.9.0"
-anyhow = "1.0.91"
-async-trait = "0.1.83"
+anyhow = "1.0.94"
 bytes = "1.9.0"
 env_logger = "0.11.5"
-futures = "0.3"
-futures-util = { version = "0.3", default-features = false }
-thiserror = "1.0.65"
-tokio = "1.41.0"
-wasmtime = "26.0.0"
-wasmtime-wasi = "26.0.0"
-
+futures = "0.3.31"
+futures-util = "0.3.31"
+thiserror = "2.0.5"
+tokio = { version = "1.42.0", features = ["io-util", "rt", "macros"] }
+tokio-stream = "0.1.17"
+wasi-common = "27.0.0"
+wasmtime = { version = "27.0.0", features = ["async"] }
+wasmtime-wasi = "27.0.0"
+wiggle = "27.0.0"

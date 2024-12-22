@@ -1,8 +1,3 @@
-> [!WARNING]  
-> This experiment has been replaced by [`robherley/webfunc`](https://github.com/robherley/webfunc)
+# func.gg
 
-# webfunc
-
-web[assembly] + func[tions] = webfunc
-
-an experimental functions runtime based on webassembly
+an experimental functions runtime based on webassembly. no glue required

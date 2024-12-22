@@ -1,68 +1,65 @@
-use futures::StreamExt;
-use wasmtime::component::{Linker, ResourceTable};
-use wasmtime::{Engine, Module};
-use wasmtime_wasi::{add_to_linker_sync, AsyncStdinStream, WasiCtx, WasiCtxBuilder, WasiView};
+use wasmtime::*;
+use wasmtime_wasi::preview1::{self, WasiP1Ctx};
+use wasmtime_wasi::{AsyncStdinStream, WasiCtxBuilder};
 
-use crate::stream::ByteStream;
+use crate::stream::ReceiverStdin;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("wasmtime error: {0}")]
+    #[error("wasmtime: {0}")]
     WasmtimeError(#[from] wasmtime::Error),
+    #[error("wasi: {0}")]
+    WasiError(#[from] wasi_common::Error),
+    #[error("string array: {0}")]
+    StringArrayError(#[from] wasi_common::StringArrayError),
+    #[error("non-zero exit code: {0}")]
+    ExitCode(i32),
+    #[error("other: {0}")]
+    Other(String),
 }
 
-pub struct State {
-    ctx: WasiCtx,
-    table: ResourceTable,
-}
+pub async fn handler(
+    binary: impl AsRef<[u8]>,
+    rx: tokio::sync::mpsc::Receiver<bytes::Bytes>,
+) -> Result<(), Error> {
+    let mut cfg = wasmtime::Config::default();
+    cfg.debug_info(true);
+    cfg.async_support(true);
+    let engine = Engine::new(&cfg)?;
+    let mut linker: Linker<WasiP1Ctx> = Linker::new(&engine);
+    preview1::add_to_linker_async(&mut linker, |t| t)?;
+    let module = Module::new(&engine, binary)?;
 
-impl State {
-    fn new(mut input: ByteStream) -> Self {
-        let ctx = WasiCtxBuilder::new().env("WEBFUNC", "1").build();
-        let table = ResourceTable::default();
+    let stdin: AsyncStdinStream = ReceiverStdin::new(rx).into();
 
-        Self { ctx, table }
-    }
-}
+    let wasi_ctx = WasiCtxBuilder::new()
+        .env("WEBFUNC", "1")
+        .stdin(stdin)
+        .inherit_stdout()
+        .inherit_stderr()
+        .build_p1();
 
-impl WasiView for State {
-    fn ctx(&mut self) -> &mut WasiCtx {
-        &mut self.ctx
-    }
-    fn table(&mut self) -> &mut ResourceTable {
-        &mut self.table
-    }
-}
+    let mut store = Store::new(&engine, wasi_ctx);
 
-pub struct Sandbox {
-    engine: Engine,
-    linker: Linker<State>,
-    module: Module,
-}
+    let func = linker
+        .module_async(&mut store, "", &module)
+        .await?
+        .get_default(&mut store, "")?
+        .typed::<(), ()>(&store)?;
 
-impl Sandbox {
-    pub fn new(binary: impl AsRef<[u8]>) -> Result<Self, Error> {
-        let cfg = wasmtime::Config::default();
-        let engine = Engine::new(&cfg)?;
-        let mut linker = Linker::new(&engine);
-        add_to_linker_sync(&mut linker)?;
-        let module = Module::new(&engine, binary)?;
-        // TODO: module cache to speed up execution
+    let result = func
+        .call_async(&mut store, ())
+        .await
+        .or_else(|err| match err.downcast_ref::<wasmtime_wasi::I32Exit>() {
+            Some(e) => {
+                if e.0 != 0 {
+                    Err(Error::ExitCode(e.0))
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Err(err.into()),
+        })?;
 
-        Ok(Self {
-            engine,
-            linker,
-            module,
-        })
-    }
-
-    pub async fn handle(&mut self, mut stream: ByteStream) -> Result<(), Error> {
-        println!("start handle");
-        while let Some(item) = stream.next().await {
-            println!("Chunk: {:?}", &item);
-        }
-        println!("end handle");
-
-        Ok(())
-    }
+    Ok(result)
 }

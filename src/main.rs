@@ -1,14 +1,14 @@
 use actix_web::{
-    get, http, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder,
-    ResponseError, Result,
+    get, http, middleware::Logger, post, web, App, HttpServer, Responder, ResponseError, Result,
 };
+use bytes::Bytes;
+use func_gg::runtime::handler;
 use futures::StreamExt;
-use webfunc::{runtime::Sandbox, stream};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("webfunc error: {0}")]
-    Runtime(#[from] webfunc::runtime::Error),
+    #[error("runtime: {0}")]
+    Runtime(#[from] func_gg::runtime::Error),
 }
 
 impl ResponseError for Error {
@@ -17,12 +17,30 @@ impl ResponseError for Error {
     }
 }
 
-#[post("/")]
-async fn handle(body: web::Payload) -> Result<impl Responder, Error> {
-    let wasm = include_bytes!("/Users/robherley/dev/webfunc-handler/dist/main.wasm");
+#[post("/")] // note: default payload limit is 256kB from actix-web, but is configurable with PayloadConfig
+async fn handle(mut body: web::Payload) -> Result<impl Responder, Error> {
+    let binary = include_bytes!("/Users/robherley/dev/webfunc-handler/dist/main.wasm");
 
-    // let mut runtime = Sandbox::new(wasm)?;
-    // runtime.handle(body.into()).await?;
+    let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(1);
+
+    actix_web::rt::spawn(async move {
+        while let Some(item) = body.next().await {
+            match item {
+                Ok(chunk) => {
+                    if let Err(e) = tx.send(chunk).await {
+                        eprintln!("Error while sending chunk: {:?}", e);
+                        break;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error while reading body: {:?}", e);
+                    break;
+                }
+            }
+        }
+    });
+
+    handler(binary, rx).await?;
 
     Ok("done")
 }
