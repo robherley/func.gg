@@ -1,33 +1,34 @@
 use bytes::Bytes;
 use std::task::ready;
-use tokio::{io::AsyncRead, sync::mpsc::Receiver};
+use tokio::{
+    io::AsyncRead,
+    sync::mpsc::{channel, Receiver, Sender},
+};
 use wasmtime_wasi::{pipe::AsyncReadStream, AsyncStdinStream};
 
-pub struct RequestStream {
-    receiver: Receiver<Bytes>,
-    leftover: Option<Vec<u8>>,
+pub struct ReceiverStream {
+    rx: Receiver<Bytes>,
+    xtra: Option<Vec<u8>>,
 }
 
-impl RequestStream {
-    pub fn new(receiver: Receiver<Bytes>) -> Self {
-        Self {
-            receiver,
-            leftover: None,
-        }
+impl ReceiverStream {
+    pub fn new() -> (Self, Sender<Bytes>) {
+        let (tx, rx) = channel::<Bytes>(1);
+        (Self { rx, xtra: None }, tx)
     }
 }
 
-impl AsyncRead for RequestStream {
+impl AsyncRead for ReceiverStream {
     fn poll_read(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
-        match ready!(self.receiver.poll_recv(cx)) {
+        match ready!(self.rx.poll_recv(cx)) {
             Some(bytes) => {
                 let mut payload = vec![];
-                if let Some(leftover) = self.leftover.take() {
-                    payload.extend_from_slice(&leftover);
+                if let Some(xtra) = self.xtra.take() {
+                    payload.extend_from_slice(&xtra);
                 }
                 payload.extend_from_slice(&bytes);
 
@@ -35,9 +36,9 @@ impl AsyncRead for RequestStream {
                 buf.put_slice(&payload[..len]);
 
                 if len < payload.len() {
-                    self.leftover = Some(payload[len..].to_vec());
+                    self.xtra = Some(payload[len..].to_vec());
                 } else {
-                    self.leftover = None;
+                    self.xtra = None;
                 }
 
                 std::task::Poll::Ready(Ok(()))
@@ -47,9 +48,9 @@ impl AsyncRead for RequestStream {
     }
 }
 
-impl From<RequestStream> for AsyncStdinStream {
-    fn from(receiver_stdin: RequestStream) -> Self {
-        let rs = AsyncReadStream::new(receiver_stdin);
+impl From<ReceiverStream> for AsyncStdinStream {
+    fn from(stream: ReceiverStream) -> Self {
+        let rs = AsyncReadStream::new(stream);
         AsyncStdinStream::new(rs)
     }
 }
@@ -57,12 +58,10 @@ impl From<RequestStream> for AsyncStdinStream {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn test_read() {
-        let (tx, rx) = mpsc::channel(1);
-        let mut receiver_stdin = RequestStream::new(rx);
+        let (mut stream, tx) = ReceiverStream::new();
 
         tx.send(Bytes::from("hello world")).await.unwrap();
 
@@ -70,7 +69,7 @@ mod tests {
         let mut read_buf = tokio::io::ReadBuf::new(&mut buf);
         let mut cx = std::task::Context::from_waker(futures::task::noop_waker_ref());
 
-        assert!(std::pin::Pin::new(&mut receiver_stdin)
+        assert!(std::pin::Pin::new(&mut stream)
             .poll_read(&mut cx, &mut read_buf)
             .is_ready());
         assert_eq!(&buf, b"hello world");
@@ -78,8 +77,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_into_leftover() {
-        let (tx, rx) = mpsc::channel(10);
-        let mut receiver_stdin = RequestStream::new(rx);
+        let (mut stream, tx) = ReceiverStream::new();
 
         tx.send(Bytes::from("hello world")).await.unwrap();
 
@@ -87,21 +85,17 @@ mod tests {
         let mut read_buf = tokio::io::ReadBuf::new(&mut buf);
         let mut cx = std::task::Context::from_waker(futures::task::noop_waker_ref());
 
-        assert!(std::pin::Pin::new(&mut receiver_stdin)
+        assert!(std::pin::Pin::new(&mut stream)
             .poll_read(&mut cx, &mut read_buf)
             .is_ready());
         assert_eq!(&buf, b"hello");
-        assert_eq!(
-            receiver_stdin.leftover,
-            Some(Bytes::from(" world").to_vec())
-        );
+        assert_eq!(stream.xtra, Some(Bytes::from(" world").to_vec()));
     }
 
     #[tokio::test]
     async fn test_from_leftover() {
-        let (tx, rx) = mpsc::channel(10);
-        let mut receiver_stdin = RequestStream::new(rx);
-        receiver_stdin.leftover = Some(Bytes::from("hello ").to_vec());
+        let (mut stream, tx) = ReceiverStream::new();
+        stream.xtra = Some(Bytes::from("hello ").to_vec());
 
         tx.send(Bytes::from("world")).await.unwrap();
 
@@ -109,7 +103,7 @@ mod tests {
         let mut read_buf = tokio::io::ReadBuf::new(&mut buf);
         let mut cx = std::task::Context::from_waker(futures::task::noop_waker_ref());
 
-        assert!(std::pin::Pin::new(&mut receiver_stdin)
+        assert!(std::pin::Pin::new(&mut stream)
             .poll_read(&mut cx, &mut read_buf)
             .is_ready());
         assert_eq!(&buf, b"hello world");

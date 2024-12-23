@@ -1,9 +1,8 @@
 use wasmtime::*;
-use wasmtime_wasi::pipe::AsyncWriteStream;
 use wasmtime_wasi::preview1::{self, WasiP1Ctx};
-use wasmtime_wasi::{AsyncStdinStream, AsyncStdoutStream, WasiCtxBuilder};
+use wasmtime_wasi::{AsyncStdinStream, WasiCtxBuilder};
 
-use crate::streams::RequestStream;
+use crate::streams::{ReceiverStream, SenderStream};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -19,9 +18,19 @@ pub enum Error {
     Other(String),
 }
 
-pub async fn handler(binary: impl AsRef<[u8]>, req: RequestStream) -> Result<(), Error> {
+// TODO(robherley): adjust config for sandboxing
+// ResourceLimiter: https://docs.rs/wasmtime/latest/wasmtime/trait.ResourceLimiter.html
+// limiter: https://docs.rs/wasmtime/latest/wasmtime/struct.Store.html#method.limiter
+// epoch_interruption: https://docs.rs/wasmtime/latest/wasmtime/struct.Config.html#method.epoch_interruption
+// fuel: https://docs.rs/wasmtime/latest/wasmtime/struct.Config.html#method.consume_fuel
+
+pub async fn handler(
+    binary: impl AsRef<[u8]>,
+    stdin: ReceiverStream,
+    stdout: SenderStream,
+) -> Result<(), Error> {
     let mut cfg = wasmtime::Config::default();
-    cfg.debug_info(true);
+    // cfg.debug_info(true);
     cfg.async_support(true);
     let engine = Engine::new(&cfg)?;
     let mut linker: Linker<WasiP1Ctx> = Linker::new(&engine);
@@ -30,9 +39,9 @@ pub async fn handler(binary: impl AsRef<[u8]>, req: RequestStream) -> Result<(),
 
     let wasi_ctx = WasiCtxBuilder::new()
         .env("WEBFUNC", "1")
-        .stdin(AsyncStdinStream::from(req))
-        .inherit_stdout()
-        .inherit_stderr()
+        .stdin(AsyncStdinStream::from(stdin))
+        .stdout(stdout)
+        .inherit_stderr() // TODO(robherley): pipe stderr to a log stream
         .build_p1();
 
     let mut store = Store::new(&engine, wasi_ctx);

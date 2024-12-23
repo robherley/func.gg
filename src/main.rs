@@ -2,10 +2,14 @@ use actix_web::{
     get, http, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder,
     ResponseError, Result,
 };
-use bytes::Bytes;
-use func_gg::{runtime::handler, streams::RequestStream};
+use func_gg::{
+    runtime::handler,
+    streams::{ReceiverStream, SenderStream},
+};
 use futures::StreamExt;
-use wiggle::tracing::warn;
+use log::warn;
+use tokio::sync::mpsc::channel;
+use wiggle::tracing::info;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -23,7 +27,7 @@ impl ResponseError for Error {
 async fn handle(mut body: web::Payload) -> Result<impl Responder, Error> {
     let binary = include_bytes!("/Users/robherley/dev/webfunc-handler/dist/main.wasm");
 
-    let (req_tx, req_rx) = tokio::sync::mpsc::channel::<Bytes>(1);
+    let (stdin, req_tx) = ReceiverStream::new();
 
     actix_web::rt::spawn(async move {
         while let Some(item) = body.next().await {
@@ -42,10 +46,31 @@ async fn handle(mut body: web::Payload) -> Result<impl Responder, Error> {
         }
     });
 
-    handler(binary, RequestStream::new(req_rx)).await?;
+    let (stdout, mut res_rx) = SenderStream::new();
 
-    // Ok(HttpResponse::Ok().streaming(stream))
-    Ok(HttpResponse::Ok().body("ok"))
+    let (body_tx, body_rx) = channel::<Result<actix_web::web::Bytes, actix_web::Error>>(1);
+    let stream = tokio_stream::wrappers::ReceiverStream::new(body_rx);
+
+    actix_web::rt::spawn(async move {
+        while let Some(item) = res_rx.recv().await {
+            let chunk = actix_web::web::Bytes::from(item);
+            info!("sending chunk: {:?}", chunk);
+            if let Err(e) = body_tx.send(Ok(chunk)).await {
+                warn!("unable to send chunk: {:?}", e);
+                break;
+            }
+        }
+    });
+
+    actix_web::rt::spawn(async move {
+        if let Err(e) = handler(binary, stdin, stdout).await {
+            warn!("handler error: {:?}", e);
+        }
+    });
+
+    // TODO(robherley): join handles? and proper error handling
+
+    Ok(HttpResponse::Ok().streaming(stream))
 }
 
 #[get("/")]

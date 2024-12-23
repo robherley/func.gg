@@ -1,3 +1,5 @@
-mod request;
+mod receiver;
+mod sender;
 
-pub use request::RequestStream;
+pub use receiver::ReceiverStream;
+pub use sender::SenderStream;
