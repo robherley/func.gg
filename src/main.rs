@@ -7,9 +7,8 @@ use func_gg::{
     streams::{ReceiverStream, SenderStream},
 };
 use futures::StreamExt;
-use log::warn;
+use log::{info, warn};
 use tokio::sync::mpsc::channel;
-use wiggle::tracing::info;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
