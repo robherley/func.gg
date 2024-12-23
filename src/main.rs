@@ -3,7 +3,7 @@ use actix_web::{
     ResponseError, Result,
 };
 use func_gg::{
-    runtime::handler,
+    runtime::Sandbox,
     streams::{ReceiverStream, SenderStream},
 };
 use futures::StreamExt;
@@ -25,6 +25,7 @@ impl ResponseError for Error {
 #[post("/")] // note: default payload limit is 256kB from actix-web, but is configurable with PayloadConfig
 async fn handle(mut body: web::Payload) -> Result<impl Responder, Error> {
     let binary = include_bytes!("/Users/robherley/dev/webfunc-handler/dist/main.wasm");
+    let mut sandbox = Sandbox::new(binary.to_vec())?;
 
     let (stdin, req_tx) = ReceiverStream::new();
 
@@ -62,7 +63,7 @@ async fn handle(mut body: web::Payload) -> Result<impl Responder, Error> {
     });
 
     actix_web::rt::spawn(async move {
-        if let Err(e) = handler(binary, stdin, stdout).await {
+        if let Err(e) = sandbox.handler(stdin, stdout).await {
             warn!("handler error: {:?}", e);
         }
     });
