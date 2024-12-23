@@ -1,3 +1,4 @@
+use log::info;
 use wasmtime::*;
 use wasmtime_wasi::preview1::{self, WasiP1Ctx};
 use wasmtime_wasi::{AsyncStdinStream, WasiCtxBuilder};
@@ -29,6 +30,8 @@ pub struct Sandbox {
     module: Module,
 }
 
+const CACHE_PATH: &str = "/Users/robherley/dev/func.gg/tmp/cache/compiled";
+
 impl Sandbox {
     pub fn new(binary: Vec<u8>) -> Result<Self, Error> {
         let mut config = wasmtime::Config::default();
@@ -40,7 +43,16 @@ impl Sandbox {
         let mut linker: Linker<WasiP1Ctx> = Linker::new(&engine);
         preview1::add_to_linker_async(&mut linker, |t| t)?;
 
-        let module = Module::new(&engine, binary)?;
+        let module = if std::path::Path::new(CACHE_PATH).exists() {
+            info!("loading cached module from disk");
+            unsafe { Module::deserialize_file(&engine, CACHE_PATH)? }
+        } else {
+            info!("compiling module from binary");
+            let module = Module::new(&engine, binary)?;
+            std::fs::write(CACHE_PATH, module.serialize()?)
+                .map_err(|e| Error::Other(e.to_string()))?;
+            module
+        };
 
         Ok(Self {
             config,
