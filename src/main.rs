@@ -1,19 +1,28 @@
 use actix_web::{
-    get, http, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder,
+    http, middleware::Logger, post, rt::spawn, web, App, HttpResponse, HttpServer, Responder,
     ResponseError, Result,
 };
 use func_gg::{
     runtime::Sandbox,
-    streams::{ReceiverStream, SenderStream},
+    streams::{InputStream, OutputStream},
 };
 use futures::StreamExt;
-use log::{info, warn};
-use tokio::sync::mpsc::channel;
+use log::error;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("runtime: {0}")]
     Runtime(#[from] func_gg::runtime::Error),
+    #[error("payload: {0}")]
+    Payload(#[from] actix_web::error::PayloadError),
+    #[error("send: {0}")]
+    Send(String),
+}
+
+impl<T> From<tokio::sync::mpsc::error::SendError<T>> for Error {
+    fn from(err: tokio::sync::mpsc::error::SendError<T>) -> Self {
+        Self::Send(err.to_string())
+    }
 }
 
 impl ResponseError for Error {
@@ -22,60 +31,41 @@ impl ResponseError for Error {
     }
 }
 
+// tokio_util::sync::CancellationToken
+// https://tokio.rs/tokio/topics/shutdown
 #[post("/")] // note: default payload limit is 256kB from actix-web, but is configurable with PayloadConfig
 async fn handle(mut body: web::Payload) -> Result<impl Responder, Error> {
     let binary = include_bytes!("/Users/robherley/dev/webfunc-handler/dist/main.wasm");
     let mut sandbox = Sandbox::new(binary.to_vec())?;
 
-    let (stdin, req_tx) = ReceiverStream::new();
+    let (stdin, input_tx) = InputStream::new();
 
-    actix_web::rt::spawn(async move {
+    // collect input from request body
+    spawn(async move {
         while let Some(item) = body.next().await {
-            match item {
-                Ok(chunk) => {
-                    if let Err(e) = req_tx.send(chunk).await {
-                        warn!("unable to send chunk: {:?}", e);
-                        break;
-                    }
-                }
-                Err(e) => {
-                    warn!("payload error: {:?}", e);
-                    break;
-                }
-            }
+            input_tx.send(item?).await?;
         }
+        Ok::<(), Error>(())
     });
 
-    let (stdout, mut res_rx) = SenderStream::new();
+    let (stdout, output_rx, mut first_write_rx) = OutputStream::new();
 
-    let (body_tx, body_rx) = channel::<Result<actix_web::web::Bytes, actix_web::Error>>(1);
-    let stream = tokio_stream::wrappers::ReceiverStream::new(body_rx);
-
-    actix_web::rt::spawn(async move {
-        while let Some(item) = res_rx.recv().await {
-            let chunk = actix_web::web::Bytes::from(item);
-            info!("sending chunk: {:?}", chunk);
-            if let Err(e) = body_tx.send(Ok(chunk)).await {
-                warn!("unable to send chunk: {:?}", e);
-                break;
-            }
-        }
+    // invoke the function
+    spawn(async move {
+        sandbox.call(stdin, stdout).await?;
+        Ok::<(), Error>(())
     });
 
-    actix_web::rt::spawn(async move {
-        if let Err(e) = sandbox.handler(stdin, stdout).await {
-            warn!("handler error: {:?}", e);
-        }
-    });
+    let content_type = match first_write_rx.recv().await {
+        Some(b'{') => "application/json",
+        Some(b'<') => "text/html",
+        _ => "text/plain",
+    };
 
-    // TODO(robherley): join handles? and proper error handling
-
-    Ok(HttpResponse::Ok().streaming(stream))
-}
-
-#[get("/")]
-async fn hello() -> impl Responder {
-    "Hello world!"
+    Ok(HttpResponse::Ok().content_type(content_type).streaming(
+        tokio_stream::wrappers::ReceiverStream::new(output_rx)
+            .map(|item| Ok::<_, Error>(actix_web::web::Bytes::from(item))),
+    ))
 }
 
 #[actix_web::main]
@@ -88,13 +78,8 @@ async fn main() -> std::io::Result<()> {
         std::env::var("PORT").unwrap_or("8080".into()),
     );
 
-    HttpServer::new(|| {
-        App::new()
-            .wrap(Logger::new("%r %s %Dms"))
-            .service(hello)
-            .service(handle)
-    })
-    .bind(addr)?
-    .run()
-    .await
+    HttpServer::new(|| App::new().wrap(Logger::new("%r %s %Dms")).service(handle))
+        .bind(addr)?
+        .run()
+        .await
 }

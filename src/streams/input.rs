@@ -6,19 +6,19 @@ use tokio::{
 };
 use wasmtime_wasi::{pipe::AsyncReadStream, AsyncStdinStream};
 
-pub struct ReceiverStream {
+pub struct InputStream {
     rx: Receiver<Bytes>,
     xtra: Option<Vec<u8>>,
 }
 
-impl ReceiverStream {
+impl InputStream {
     pub fn new() -> (Self, Sender<Bytes>) {
         let (tx, rx) = channel::<Bytes>(1);
         (Self { rx, xtra: None }, tx)
     }
 }
 
-impl AsyncRead for ReceiverStream {
+impl AsyncRead for InputStream {
     fn poll_read(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -48,8 +48,8 @@ impl AsyncRead for ReceiverStream {
     }
 }
 
-impl From<ReceiverStream> for AsyncStdinStream {
-    fn from(stream: ReceiverStream) -> Self {
+impl From<InputStream> for AsyncStdinStream {
+    fn from(stream: InputStream) -> Self {
         let rs = AsyncReadStream::new(stream);
         AsyncStdinStream::new(rs)
     }
@@ -61,7 +61,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read() {
-        let (mut stream, tx) = ReceiverStream::new();
+        let (mut stream, tx) = InputStream::new();
 
         tx.send(Bytes::from("hello world")).await.unwrap();
 
@@ -77,7 +77,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_into_leftover() {
-        let (mut stream, tx) = ReceiverStream::new();
+        let (mut stream, tx) = InputStream::new();
 
         tx.send(Bytes::from("hello world")).await.unwrap();
 
@@ -94,7 +94,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_from_leftover() {
-        let (mut stream, tx) = ReceiverStream::new();
+        let (mut stream, tx) = InputStream::new();
         stream.xtra = Some(Bytes::from("hello ").to_vec());
 
         tx.send(Bytes::from("world")).await.unwrap();

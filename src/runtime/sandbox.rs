@@ -1,9 +1,13 @@
+use std::sync::Arc;
+
 use log::info;
+use tokio::spawn;
+use tokio::sync::Mutex;
 use wasmtime::*;
 use wasmtime_wasi::preview1::{self, WasiP1Ctx};
 use wasmtime_wasi::{AsyncStdinStream, WasiCtxBuilder};
 
-use crate::streams::{ReceiverStream, SenderStream};
+use crate::streams::{InputStream, OutputStream};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -37,6 +41,7 @@ impl Sandbox {
         let mut config = wasmtime::Config::default();
         config.debug_info(true);
         config.async_support(true);
+        config.epoch_interruption(true);
 
         let engine = Engine::new(&config)?;
 
@@ -62,11 +67,7 @@ impl Sandbox {
         })
     }
 
-    pub async fn handler(
-        &mut self,
-        stdin: ReceiverStream,
-        stdout: SenderStream,
-    ) -> Result<(), Error> {
+    pub async fn call(&mut self, stdin: InputStream, stdout: OutputStream) -> Result<(), Error> {
         let wasi_ctx = WasiCtxBuilder::new()
             .env("FUNC_GG", "1")
             .stdin(AsyncStdinStream::from(stdin))
@@ -74,7 +75,9 @@ impl Sandbox {
             .inherit_stderr() // TODO(robherley): pipe stderr to a log stream
             .build_p1();
 
+        // NOTE: if store changes, we need to recompile the module
         let mut store = Store::new(&self.engine, wasi_ctx);
+        store.set_epoch_deadline(1);
 
         let func = self
             .linker
@@ -83,7 +86,17 @@ impl Sandbox {
             .get_default(&mut store, "")?
             .typed::<(), ()>(&store)?;
 
-        let result = func.call_async(&mut store, ()).await.or_else(|err| {
+        let engine = Arc::new(Mutex::new(self.engine.clone()));
+        spawn({
+            let engine = Arc::clone(&engine);
+            async move {
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                info!("cancelling request");
+                engine.lock().await.increment_epoch();
+            }
+        });
+
+        func.call_async(&mut store, ()).await.or_else(|err| {
             match err.downcast_ref::<wasmtime_wasi::I32Exit>() {
                 Some(e) => {
                     if e.0 != 0 {
@@ -94,8 +107,6 @@ impl Sandbox {
                 }
                 _ => Err(err.into()),
             }
-        })?;
-
-        Ok(result)
+        })
     }
 }

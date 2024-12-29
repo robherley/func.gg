@@ -1,5 +1,5 @@
-mod receiver;
-mod sender;
+mod input;
+pub use input::InputStream;
 
-pub use receiver::ReceiverStream;
-pub use sender::SenderStream;
+mod output;
+pub use output::OutputStream;
