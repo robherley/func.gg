@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+
+OUT_DIR=dist
+mkdir -p "$OUT_DIR"
+
+# GOOS=wasip1 GOARCH=wasm tinygo build -o  main.go
+
+GOOS=wasip1 GOARCH=wasm go build -o "$OUT_DIR/main.wasm"
+# GOOS=wasip2 GOARCH=wasm tinygo build -target wasi -o "$OUT_DIR/main.tinygo.wasm"
+
+rm -rf /Users/robherley/dev/func.gg/tmp/cache/*
