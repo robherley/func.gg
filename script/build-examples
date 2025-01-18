@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+
+set -eo pipefail
+
+ROOT=$(realpath "$(dirname "$0")/..")
+TMP="$ROOT/tmp"
+
+build_go_hello_world() {
+  DIR="$ROOT/examples/go-hello-world"
+  DIST="$DIR/dist"
+  mkdir -p "$DIST"
+  echo "Building $DIST/main.go"
+  GOOS=wasip1 GOARCH=wasm go build -o "$DIST/main.wasm" "$DIR/main.go"
+
+  if [ -z "$CI" ]; then
+    echo "Building $DIST/main.tinygo.wasm"
+    GOOS=wasip1 GOARCH=wasm tinygo build -target wasi -o "$DIST/main.tinygo.wasm" "$DIR/main.go"
+  fi
+}
+
+build_go_hello_world
+
+mkdir -p "$TMP"
+rm -rf "$TMP/compile-cache"
+

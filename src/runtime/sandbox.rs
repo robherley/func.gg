@@ -1,3 +1,4 @@
+use std::env;
 use std::sync::Arc;
 
 use log::info;
@@ -28,18 +29,16 @@ pub enum Error {
 pub struct Sandbox {
     #[allow(dead_code)]
     config: Config,
-    #[allow(dead_code)]
     engine: Engine,
     linker: Linker<WasiP1Ctx>,
     module: Module,
 }
 
-const CACHE_PATH: &str = "/Users/robherley/dev/func.gg/tmp/cache/compiled";
-
 impl Sandbox {
     pub fn new(binary: Vec<u8>) -> Result<Self, Error> {
+        // NOTE: if config changes, we need to recompile the module
         let mut config = wasmtime::Config::default();
-        config.debug_info(true);
+        config.debug_info(false);
         config.async_support(true);
         config.epoch_interruption(true);
 
@@ -48,13 +47,15 @@ impl Sandbox {
         let mut linker: Linker<WasiP1Ctx> = Linker::new(&engine);
         preview1::add_to_linker_async(&mut linker, |t| t)?;
 
-        let module = if std::path::Path::new(CACHE_PATH).exists() {
+        let cache_path =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tmp/compile-cache");
+        let module = if cache_path.exists() {
             info!("loading cached module from disk");
-            unsafe { Module::deserialize_file(&engine, CACHE_PATH)? }
+            unsafe { Module::deserialize_file(&engine, cache_path)? }
         } else {
             info!("compiling module from binary");
             let module = Module::new(&engine, binary)?;
-            std::fs::write(CACHE_PATH, module.serialize()?)
+            std::fs::write(cache_path, module.serialize()?)
                 .map_err(|e| Error::Other(e.to_string()))?;
             module
         };

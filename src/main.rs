@@ -7,7 +7,8 @@ use func_gg::{
     streams::{InputStream, OutputStream},
 };
 use futures::StreamExt;
-use log::error;
+use log::{error, warn};
+use tokio::sync::mpsc::channel;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -35,42 +36,65 @@ impl ResponseError for Error {
 // https://tokio.rs/tokio/topics/shutdown
 #[post("/")] // note: default payload limit is 256kB from actix-web, but is configurable with PayloadConfig
 async fn handle(mut body: web::Payload) -> Result<impl Responder, Error> {
-    let binary = include_bytes!("/Users/robherley/dev/webfunc-handler/dist/main.wasm");
+    let binary = include_bytes!("../examples/go-hello-world/dist/main.wasm");
     let mut sandbox = Sandbox::new(binary.to_vec())?;
 
     let (stdin, input_tx) = InputStream::new();
 
-    // collect input from request body
     spawn(async move {
         while let Some(item) = body.next().await {
-            input_tx.send(item?).await?;
+            if let Err(e) = input_tx.send(item?).await {
+                error!("unable to send chunk: {:?}", e);
+                break;
+            }
         }
         Ok::<(), Error>(())
     });
 
-    let (stdout, output_rx, mut first_write_rx) = OutputStream::new();
+    let (stdout, mut output_rx) = OutputStream::new();
+    let (body_tx, body_rx) = channel::<Result<actix_web::web::Bytes, actix_web::Error>>(1);
+    let stream = tokio_stream::wrappers::ReceiverStream::new(body_rx);
 
-    // invoke the function
+    let (first_char_tx, first_char_rx) = tokio::sync::oneshot::channel::<u8>();
+
+    spawn(async move {
+        let mut first_char_tx = Some(first_char_tx);
+        while let Some(item) = output_rx.recv().await {
+            if let Some(tx) = first_char_tx.take() {
+                if let Err(err) = tx.send(item[0]) {
+                    warn!("failed to send first char: {:?}", err);
+                }
+            }
+
+            if let Err(e) = body_tx.send(Ok(item)).await {
+                warn!("unable to send chunk: {:?}", e);
+                break;
+            }
+        }
+    });
+
     spawn(async move {
         sandbox.call(stdin, stdout).await?;
         Ok::<(), Error>(())
     });
 
-    let content_type = match first_write_rx.recv().await {
-        Some(b'{') => "application/json",
-        Some(b'<') => "text/html",
+    let content_type = match first_char_rx.await {
+        Ok(b'{') => "application/json",
+        Ok(b'<') => "text/html",
         _ => "text/plain",
     };
 
-    Ok(HttpResponse::Ok().content_type(content_type).streaming(
-        tokio_stream::wrappers::ReceiverStream::new(output_rx)
-            .map(|item| Ok::<_, Error>(actix_web::web::Bytes::from(item))),
-    ))
+    Ok(HttpResponse::Ok()
+        .content_type(content_type)
+        .streaming(stream))
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    env_logger::init_from_env(env_logger::Env::default().default_filter_or("info"));
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .filter_module("wasmtime_wasi", log::LevelFilter::Warn)
+        .filter_module("tracing", log::LevelFilter::Warn)
+        .init();
 
     let addr = format!(
         "{}:{}",
