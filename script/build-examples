@@ -14,7 +14,7 @@ build_go_hello_world() {
 
   if [ -z "$CI" ]; then
     echo "Building $DIST/main.tinygo.wasm"
-    GOOS=wasip1 GOARCH=wasm tinygo build -target wasi -o "$DIST/main.tinygo.wasm" "$DIR/main.go"
+    tinygo build -target=wasip2 -o "$DIST/main.tinygo.wasm" "$DIR/main.go"
   fi
 }
 

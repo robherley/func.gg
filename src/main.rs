@@ -14,7 +14,7 @@ use tokio::sync::mpsc::channel;
 // https://tokio.rs/tokio/topics/shutdown
 #[post("/")] // note: default payload limit is 256kB from actix-web, but is configurable with PayloadConfig
 async fn handle(mut body: web::Payload) -> Result<impl Responder, Error> {
-    let binary = include_bytes!("../examples/go-hello-world/dist/main.wasm");
+    let binary = include_bytes!("../examples/go-hello-world/dist/main.tinygo.wasm");
     let mut sandbox = Sandbox::new(binary.to_vec())?;
 
     let (stdin, input_tx) = InputStream::new();
@@ -44,7 +44,9 @@ async fn handle(mut body: web::Payload) -> Result<impl Responder, Error> {
     });
 
     spawn(async move {
-        sandbox.call(stdin, stdout).await?;
+        if let Err(err) = sandbox.call(stdin, stdout).await {
+            error!("sandbox error: {:?}", err);
+        }
         Ok::<(), Error>(())
     });
 

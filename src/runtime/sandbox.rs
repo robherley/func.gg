@@ -91,14 +91,7 @@ impl Sandbox {
         let mut store = Store::new(&self.engine, state);
         store.set_epoch_deadline(1);
 
-        let instance = self
-            .linker
-            .instantiate_async(&mut store, &self.component)
-            .await?;
-
-        let func = instance.get_typed_func::<(), ()>(&mut store, "_start")?;
         let (finished_tx, finished_rx) = tokio::sync::oneshot::channel::<()>();
-
         spawn({
             let weak_engine = self.engine.weak();
             async move {
@@ -118,6 +111,15 @@ impl Sandbox {
                 }
             }
         });
+
+        warn!("init");
+        let instance = self
+            .linker
+            .instantiate_async(&mut store, &self.component)
+            .await?;
+        warn!("running...");
+
+        let func = instance.get_typed_func::<(), ()>(&mut store, "wasi:cli/run@0.2.0#run")?;
 
         let result = func.call_async(&mut store, ()).await;
         _ = finished_tx.send(());
