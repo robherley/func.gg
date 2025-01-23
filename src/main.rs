@@ -1,7 +1,7 @@
 use actix_web::{
-    http, middleware::Logger, post, rt::spawn, web, App, HttpResponse, HttpServer, Responder,
-    ResponseError, Result,
+    middleware::Logger, post, rt::spawn, web, App, HttpResponse, HttpServer, Responder, Result,
 };
+use funcgg::http::Error;
 use funcgg::{
     runtime::Sandbox,
     streams::{InputStream, OutputStream},
@@ -9,28 +9,6 @@ use funcgg::{
 use futures::StreamExt;
 use log::{error, warn};
 use tokio::sync::mpsc::channel;
-
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("runtime: {0}")]
-    Runtime(#[from] funcgg::runtime::Error),
-    #[error("payload: {0}")]
-    Payload(#[from] actix_web::error::PayloadError),
-    #[error("send: {0}")]
-    Send(String),
-}
-
-impl<T> From<tokio::sync::mpsc::error::SendError<T>> for Error {
-    fn from(err: tokio::sync::mpsc::error::SendError<T>) -> Self {
-        Self::Send(err.to_string())
-    }
-}
-
-impl ResponseError for Error {
-    fn status_code(&self) -> http::StatusCode {
-        http::StatusCode::INTERNAL_SERVER_ERROR
-    }
-}
 
 // tokio_util::sync::CancellationToken
 // https://tokio.rs/tokio/topics/shutdown
@@ -43,9 +21,11 @@ async fn handle(mut body: web::Payload) -> Result<impl Responder, Error> {
 
     spawn(async move {
         while let Some(item) = body.next().await {
-            if let Err(e) = input_tx.send(item?).await {
-                error!("unable to send chunk: {:?}", e);
-                break;
+            if let Ok(item) = item {
+                if let Err(e) = input_tx.send(item).await {
+                    error!("unable to send chunk: {:?}", e);
+                    break;
+                }
             }
         }
         Ok::<(), Error>(())
@@ -56,8 +36,8 @@ async fn handle(mut body: web::Payload) -> Result<impl Responder, Error> {
 
     spawn(async move {
         while let Some(item) = output_rx.recv().await {
-            if let Err(e) = body_tx.send(Ok(item)).await {
-                warn!("unable to send chunk: {:?}", e);
+            if let Err(err) = body_tx.send(Ok(item)).await {
+                warn!("unable to send chunk: {:?}", err);
                 break;
             }
         }

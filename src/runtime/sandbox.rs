@@ -1,3 +1,4 @@
+use anyhow::Result;
 use log::{info, warn};
 use std::env;
 use tokio::spawn;
@@ -8,16 +9,6 @@ use wasmtime_wasi::{AsyncStdinStream, WasiCtxBuilder};
 use crate::streams::{InputStream, OutputStream};
 
 const MAX_RUNTIME_DURATION: std::time::Duration = std::time::Duration::from_secs(10);
-
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("wasmtime: {0}")]
-    WasmtimeError(#[from] wasmtime::Error),
-    #[error("non-zero exit code: {0}")]
-    ExitCode(i32),
-    #[error("other: {0}")]
-    Other(String),
-}
 
 // TODO(robherley): adjust config for sandboxing
 // ResourceLimiter: https://docs.rs/wasmtime/latest/wasmtime/trait.ResourceLimiter.html
@@ -34,7 +25,7 @@ pub struct Sandbox {
 }
 
 impl Sandbox {
-    pub fn new(binary: Vec<u8>) -> Result<Self, Error> {
+    pub fn new(binary: Vec<u8>) -> Result<Self> {
         // NOTE: if config changes, we need to recompile the module
         let mut config = wasmtime::Config::default();
         config.debug_info(false);
@@ -54,8 +45,7 @@ impl Sandbox {
         } else {
             info!("compiling module from binary");
             let module = Module::new(&engine, binary)?;
-            std::fs::write(cache_path, module.serialize()?)
-                .map_err(|e| Error::Other(e.to_string()))?;
+            std::fs::write(cache_path, module.serialize()?)?;
             module
         };
 
@@ -67,7 +57,11 @@ impl Sandbox {
         })
     }
 
-    pub async fn call(&mut self, stdin: InputStream, stdout: OutputStream) -> Result<(), Error> {
+    pub async fn call(
+        &mut self,
+        stdin: InputStream,
+        stdout: OutputStream,
+    ) -> Result<i32, anyhow::Error> {
         let wasi_ctx = WasiCtxBuilder::new()
             .env("FUNCGG", "1")
             .stdin(AsyncStdinStream::from(stdin))
@@ -109,20 +103,20 @@ impl Sandbox {
             }
         });
 
-        let result = func.call_async(&mut store, ()).await.or_else(|err| {
-            match err.downcast_ref::<wasmtime_wasi::I32Exit>() {
-                Some(e) => {
-                    if e.0 != 0 {
-                        Err(Error::ExitCode(e.0))
-                    } else {
-                        Ok(())
-                    }
-                }
-                _ => Err(err.into()),
-            }
-        });
-
+        let result = func.call_async(&mut store, ()).await;
         _ = finished_tx.send(());
-        result
+
+        let mut exit_code = -1;
+        if let Err(err) = result {
+            if let Some(exit) = err.downcast_ref::<wasmtime_wasi::I32Exit>() {
+                exit_code = exit.0;
+            } else {
+                warn!("finished with error: {:?}", err);
+                return Err(err.into());
+            }
+        }
+
+        info!("exited with code: {:?}", exit_code);
+        Ok(exit_code)
     }
 }
