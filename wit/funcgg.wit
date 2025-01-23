@@ -1,0 +1,34 @@
+package funcgg:runtime@0.1.0;
+
+// interface http {
+//   type status = u32;
+//   type headers = list<tuple<string, string>>;
+
+//   record request {
+//     method: string,
+//     uri: string,
+//     headers: headers,
+//     body: list<u8>,
+//   }
+
+//   record response {
+//     status: status,
+//     headers: headers,
+//     body: list<u8>,
+//   }
+// }
+
+interface fetcher {
+  // use http.{request, response};
+
+  // variant fetch-error {
+  //   other(string),
+  // }
+
+  // fetch: func(req: request) -> result<response, fetch-error>;
+  fetch: func(req: list<u8>) -> list<u8>;
+}
+
+world runner {
+  import fetcher;
+}

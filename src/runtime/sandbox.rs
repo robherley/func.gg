@@ -1,12 +1,12 @@
 use anyhow::Result;
 use log::{info, warn};
-use std::env;
 use tokio::spawn;
-use wasmtime::*;
-use wasmtime_wasi::preview1::{self, WasiP1Ctx};
-use wasmtime_wasi::{AsyncStdinStream, WasiCtxBuilder};
+use wasmtime::component::{Component, Linker};
+use wasmtime::{Engine, Store};
+use wasmtime_wasi::*;
 
 use crate::streams::{InputStream, OutputStream};
+use crate::wit;
 
 const MAX_RUNTIME_DURATION: std::time::Duration = std::time::Duration::from_secs(10);
 
@@ -16,12 +16,47 @@ const MAX_RUNTIME_DURATION: std::time::Duration = std::time::Duration::from_secs
 // epoch_interruption: https://docs.rs/wasmtime/latest/wasmtime/struct.Config.html#method.epoch_interruption
 // fuel: https://docs.rs/wasmtime/latest/wasmtime/struct.Config.html#method.consume_fuel
 
+pub struct State {
+    ctx: WasiCtx,
+    table: ResourceTable,
+}
+
+impl State {
+    pub fn new(stdin: InputStream, stdout: OutputStream) -> Self {
+        let ctx = WasiCtxBuilder::new()
+            .env("FUNCGG", "1")
+            .stdin(AsyncStdinStream::from(stdin))
+            .stdout(stdout)
+            .inherit_stderr() // TODO(robherley): pipe stderr to a log stream
+            .build();
+        Self {
+            ctx,
+            table: ResourceTable::default(),
+        }
+    }
+}
+
+impl WasiView for State {
+    fn ctx(&mut self) -> &mut WasiCtx {
+        &mut self.ctx
+    }
+    fn table(&mut self) -> &mut ResourceTable {
+        &mut self.table
+    }
+}
+
+#[async_trait]
+impl wit::funcgg::runtime::fetcher::Host for State {
+    async fn fetch(&mut self, input: Vec<u8>) -> Vec<u8> {
+        info!("fetching: {:?}", input);
+        "hello world".as_bytes().to_vec()
+    }
+}
+
 pub struct Sandbox {
-    #[allow(dead_code)]
-    config: Config,
     engine: Engine,
-    linker: Linker<WasiP1Ctx>,
-    module: Module,
+    linker: Linker<State>,
+    component: Component,
 }
 
 impl Sandbox {
@@ -34,26 +69,16 @@ impl Sandbox {
 
         let engine = Engine::new(&config)?;
 
-        let mut linker: Linker<WasiP1Ctx> = Linker::new(&engine);
-        preview1::add_to_linker_async(&mut linker, |t| t)?;
+        let mut linker = Linker::new(&engine);
+        wasmtime_wasi::add_to_linker_async(&mut linker)?;
+        wit::Runner::add_to_linker(&mut linker, |state: &mut State| state)?;
 
-        let cache_path =
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tmp/compile-cache");
-        let module = if cache_path.exists() {
-            info!("loading cached module from disk");
-            unsafe { Module::deserialize_file(&engine, cache_path)? }
-        } else {
-            info!("compiling module from binary");
-            let module = Module::new(&engine, binary)?;
-            std::fs::write(cache_path, module.serialize()?)?;
-            module
-        };
+        let component = Component::new(&engine, binary)?;
 
         Ok(Self {
-            config,
             engine,
             linker,
-            module,
+            component,
         })
     }
 
@@ -62,25 +87,16 @@ impl Sandbox {
         stdin: InputStream,
         stdout: OutputStream,
     ) -> Result<i32, anyhow::Error> {
-        let wasi_ctx = WasiCtxBuilder::new()
-            .env("FUNCGG", "1")
-            .stdin(AsyncStdinStream::from(stdin))
-            .stdout(stdout)
-            .inherit_stderr() // TODO(robherley): pipe stderr to a log stream
-            .build_p1();
-
-        // NOTE: if store changes, we need to recompile the module
-        let mut store = Store::new(&self.engine, wasi_ctx);
+        let state = State::new(stdin, stdout);
+        let mut store = Store::new(&self.engine, state);
         store.set_epoch_deadline(1);
-        // TODO: limit memory with store.limiter();
 
-        let func = self
+        let instance = self
             .linker
-            .module_async(&mut store, "", &self.module)
-            .await?
-            .get_default(&mut store, "")?
-            .typed::<(), ()>(&store)?;
+            .instantiate_async(&mut store, &self.component)
+            .await?;
 
+        let func = instance.get_typed_func::<(), ()>(&mut store, "_start")?;
         let (finished_tx, finished_rx) = tokio::sync::oneshot::channel::<()>();
 
         spawn({
