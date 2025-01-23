@@ -2,7 +2,7 @@ use actix_web::{
     http, middleware::Logger, post, rt::spawn, web, App, HttpResponse, HttpServer, Responder,
     ResponseError, Result,
 };
-use func_gg::{
+use funcgg::{
     runtime::Sandbox,
     streams::{InputStream, OutputStream},
 };
@@ -13,7 +13,7 @@ use tokio::sync::mpsc::channel;
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("runtime: {0}")]
-    Runtime(#[from] func_gg::runtime::Error),
+    Runtime(#[from] funcgg::runtime::Error),
     #[error("payload: {0}")]
     Payload(#[from] actix_web::error::PayloadError),
     #[error("send: {0}")]
@@ -53,19 +53,9 @@ async fn handle(mut body: web::Payload) -> Result<impl Responder, Error> {
 
     let (stdout, mut output_rx) = OutputStream::new();
     let (body_tx, body_rx) = channel::<Result<actix_web::web::Bytes, actix_web::Error>>(1);
-    let stream = tokio_stream::wrappers::ReceiverStream::new(body_rx);
-
-    let (first_char_tx, first_char_rx) = tokio::sync::oneshot::channel::<u8>();
 
     spawn(async move {
-        let mut first_char_tx = Some(first_char_tx);
         while let Some(item) = output_rx.recv().await {
-            if let Some(tx) = first_char_tx.take() {
-                if let Err(err) = tx.send(item[0]) {
-                    warn!("failed to send first char: {:?}", err);
-                }
-            }
-
             if let Err(e) = body_tx.send(Ok(item)).await {
                 warn!("unable to send chunk: {:?}", e);
                 break;
@@ -78,15 +68,7 @@ async fn handle(mut body: web::Payload) -> Result<impl Responder, Error> {
         Ok::<(), Error>(())
     });
 
-    let content_type = match first_char_rx.await {
-        Ok(b'{') => "application/json",
-        Ok(b'<') => "text/html",
-        _ => "text/plain",
-    };
-
-    Ok(HttpResponse::Ok()
-        .content_type(content_type)
-        .streaming(stream))
+    Ok(HttpResponse::Ok().streaming(tokio_stream::wrappers::ReceiverStream::new(body_rx)))
 }
 
 #[actix_web::main]

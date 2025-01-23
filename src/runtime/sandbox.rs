@@ -1,14 +1,13 @@
+use log::{info, warn};
 use std::env;
-use std::sync::Arc;
-
-use log::info;
 use tokio::spawn;
-use tokio::sync::Mutex;
 use wasmtime::*;
 use wasmtime_wasi::preview1::{self, WasiP1Ctx};
 use wasmtime_wasi::{AsyncStdinStream, WasiCtxBuilder};
 
 use crate::streams::{InputStream, OutputStream};
+
+const MAX_RUNTIME_DURATION: std::time::Duration = std::time::Duration::from_secs(10);
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -70,7 +69,7 @@ impl Sandbox {
 
     pub async fn call(&mut self, stdin: InputStream, stdout: OutputStream) -> Result<(), Error> {
         let wasi_ctx = WasiCtxBuilder::new()
-            .env("FUNC_GG", "1")
+            .env("FUNCGG", "1")
             .stdin(AsyncStdinStream::from(stdin))
             .stdout(stdout)
             .inherit_stderr() // TODO(robherley): pipe stderr to a log stream
@@ -79,6 +78,7 @@ impl Sandbox {
         // NOTE: if store changes, we need to recompile the module
         let mut store = Store::new(&self.engine, wasi_ctx);
         store.set_epoch_deadline(1);
+        // TODO: limit memory with store.limiter();
 
         let func = self
             .linker
@@ -87,17 +87,29 @@ impl Sandbox {
             .get_default(&mut store, "")?
             .typed::<(), ()>(&store)?;
 
-        let engine = Arc::new(Mutex::new(self.engine.clone()));
+        let (finished_tx, finished_rx) = tokio::sync::oneshot::channel::<()>();
+
         spawn({
-            let engine = Arc::clone(&engine);
+            let weak_engine = self.engine.weak();
             async move {
-                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                info!("cancelling request");
-                engine.lock().await.increment_epoch();
+                tokio::select! {
+                  _ = tokio::time::sleep(MAX_RUNTIME_DURATION) => {
+                    warn!("cancelling request");
+                    match weak_engine.upgrade() {
+                      Some(engine) => {
+                        engine.increment_epoch();
+                      }
+                      None => {
+                        warn!("engine dropped before interrupting");
+                      }
+                    }
+                  }
+                  _ = finished_rx => { /* do nothing */ }
+                }
             }
         });
 
-        func.call_async(&mut store, ()).await.or_else(|err| {
+        let result = func.call_async(&mut store, ()).await.or_else(|err| {
             match err.downcast_ref::<wasmtime_wasi::I32Exit>() {
                 Some(e) => {
                     if e.0 != 0 {
@@ -108,6 +120,9 @@ impl Sandbox {
                 }
                 _ => Err(err.into()),
             }
-        })
+        });
+
+        _ = finished_tx.send(());
+        result
     }
 }
