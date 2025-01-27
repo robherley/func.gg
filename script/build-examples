@@ -18,6 +18,7 @@ build_rust() {
   DIR="$ROOT/examples/rust"
   pushd "$DIR" > /dev/null
   echo "Building rust example..."
+  rustup target add wasm32-wasip2
   cargo build --release --target wasm32-wasip2
   popd > /dev/null
 }
