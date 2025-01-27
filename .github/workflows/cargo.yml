@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  TINYGO_VERSION: "0.35.0"
 
 jobs:
   test:
@@ -15,6 +16,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - run: |
+        wget https://github.com/tinygo-org/tinygo/releases/download/v$TINYGO_VERSION/tinygo_$TINYGO_VERSION_amd64.deb
+        sudo dpkg -i tinygo_$TINYGO_VERSION_amd64.deb
     - run: script/build-examples
     - run: cargo build --verbose
     - run: cargo test --verbose

@@ -3,8 +3,12 @@ pub mod streams;
 
 pub mod wit {
     wasmtime::component::bindgen!({
-      world: "runner",
-      path: "wit/funcgg.wit",
+      world: "run",
+      path: "wit/",
+      // with: {
+      //   "wasi": wasmtime_wasi::bindings,
+      // },
+      // include_generated_code_from_file: true,
       async: true,
     });
 }

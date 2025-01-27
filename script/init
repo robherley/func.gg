@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+set -eo pipefail
+
+ROOT=$(realpath "$(dirname "$0")/..")
+
+dependencies=(cargo wasm-tools wkg tinygo)
+
+for dep in "${dependencies[@]}"; do
+  if ! command -v "$dep" &> /dev/null; then
+    echo "error: $dep is not installed." >&2
+    exit 1
+  fi
+done
+
+"$ROOT/script/wit-fetch"
+"$ROOT/script/build-examples"

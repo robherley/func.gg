@@ -3,12 +3,13 @@ use log::{info, warn};
 use tokio::spawn;
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Engine, Store};
+use wasmtime_wasi::bindings::Command;
 use wasmtime_wasi::*;
 
 use crate::streams::{InputStream, OutputStream};
 use crate::wit;
 
-const MAX_RUNTIME_DURATION: std::time::Duration = std::time::Duration::from_secs(10);
+const MAX_RUNTIME_DURATION: std::time::Duration = std::time::Duration::from_secs(30);
 
 // TODO(robherley): adjust config for sandboxing
 // ResourceLimiter: https://docs.rs/wasmtime/latest/wasmtime/trait.ResourceLimiter.html
@@ -45,11 +46,13 @@ impl WasiView for State {
     }
 }
 
-#[async_trait]
-impl wit::funcgg::runtime::fetcher::Host for State {
-    async fn fetch(&mut self, input: Vec<u8>) -> Vec<u8> {
-        info!("fetching: {:?}", input);
-        "hello world".as_bytes().to_vec()
+impl wit::funcgg::runtime::responder::Host for State {
+    async fn set_status(&mut self, status: u16) {
+        info!("set_status: {:?}", status);
+    }
+
+    async fn set_header(&mut self, key: String, value: String) {
+        info!("set_header: {:?}={:?}", key, value);
     }
 }
 
@@ -61,20 +64,21 @@ pub struct Sandbox {
 
 impl Sandbox {
     pub fn new(binary: Vec<u8>) -> Result<Self> {
-        // NOTE: if config changes, we need to recompile the module
+        let start = std::time::Instant::now();
         let mut config = wasmtime::Config::default();
         config.debug_info(false);
         config.async_support(true);
         config.epoch_interruption(true);
 
         let engine = Engine::new(&config)?;
-
         let mut linker = Linker::new(&engine);
         wasmtime_wasi::add_to_linker_async(&mut linker)?;
-        wit::Runner::add_to_linker(&mut linker, |state: &mut State| state)?;
+        wit::Run::add_to_linker(&mut linker, |state: &mut State| state)?;
 
         let component = Component::new(&engine, binary)?;
 
+        // TODO: cache serialized component
+        info!("wasmtime init took: {:?}", start.elapsed());
         Ok(Self {
             engine,
             linker,
@@ -86,7 +90,7 @@ impl Sandbox {
         &mut self,
         stdin: InputStream,
         stdout: OutputStream,
-    ) -> Result<i32, anyhow::Error> {
+    ) -> Result<(), anyhow::Error> {
         let state = State::new(stdin, stdout);
         let mut store = Store::new(&self.engine, state);
         store.set_epoch_deadline(1);
@@ -98,13 +102,8 @@ impl Sandbox {
                 tokio::select! {
                   _ = tokio::time::sleep(MAX_RUNTIME_DURATION) => {
                     warn!("cancelling request");
-                    match weak_engine.upgrade() {
-                      Some(engine) => {
-                        engine.increment_epoch();
-                      }
-                      None => {
-                        warn!("engine dropped before interrupting");
-                      }
+                    if let Some(engine) = weak_engine.upgrade() {
+                      engine.increment_epoch();
                     }
                   }
                   _ = finished_rx => { /* do nothing */ }
@@ -112,29 +111,14 @@ impl Sandbox {
             }
         });
 
-        warn!("init");
-        let instance = self
-            .linker
-            .instantiate_async(&mut store, &self.component)
-            .await?;
-        warn!("running...");
-
-        let func = instance.get_typed_func::<(), ()>(&mut store, "wasi:cli/run@0.2.0#run")?;
-
-        let result = func.call_async(&mut store, ()).await;
+        let command = Command::instantiate_async(&mut store, &self.component, &self.linker).await?;
+        let result = command.wasi_cli_run().call_run(&mut store).await?;
         _ = finished_tx.send(());
 
-        let mut exit_code = -1;
-        if let Err(err) = result {
-            if let Some(exit) = err.downcast_ref::<wasmtime_wasi::I32Exit>() {
-                exit_code = exit.0;
-            } else {
-                warn!("finished with error: {:?}", err);
-                return Err(err.into());
-            }
+        // exit codes are "unstable" still: https://github.com/WebAssembly/wasi-cli/blob/d4fddec89fb9354509dbfa29a5557c58983f327a/wit/exit.wit#L15
+        match result {
+            Ok(_) => Ok(()),
+            Err(_) => Err(anyhow::anyhow!("wasi command failed")),
         }
-
-        info!("exited with code: {:?}", exit_code);
-        Ok(exit_code)
     }
 }

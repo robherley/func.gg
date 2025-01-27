@@ -3,22 +3,24 @@ package funcgg:runtime@0.1.0;
 // interface http {
 //   type status = u32;
 //   type headers = list<tuple<string, string>>;
+//   // streams
+//   type body = list<u8>;
 
 //   record request {
 //     method: string,
 //     uri: string,
 //     headers: headers,
-//     body: list<u8>,
+//     body: body,
 //   }
 
 //   record response {
 //     status: status,
 //     headers: headers,
-//     body: list<u8>,
+//     body: body,
 //   }
 // }
 
-interface fetcher {
+// interface fetcher {
   // use http.{request, response};
 
   // variant fetch-error {
@@ -26,9 +28,15 @@ interface fetcher {
   // }
 
   // fetch: func(req: request) -> result<response, fetch-error>;
-  fetch: func(req: list<u8>) -> list<u8>;
+// }
+
+interface responder {
+  set-header: func(k: string, v: string);
+  set-status: func(status: u16);
 }
 
-world runner {
-  import fetcher;
+world run {
+  // include wasi:cli/imports@0.2.3;
+  // import fetcher;
+  import responder;
 }
