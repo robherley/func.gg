@@ -16,9 +16,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - run: |
-        wget https://github.com/tinygo-org/tinygo/releases/download/v$TINYGO_VERSION/tinygo_$TINYGO_VERSION_amd64.deb
-        sudo dpkg -i tinygo_$TINYGO_VERSION_amd64.deb
+    - name: setup tinygo
+      run: |
+        wget https://github.com/tinygo-org/tinygo/releases/download/v${TINYGO_VERSION}/tinygo_${TINYGO_VERSION}_amd64.deb
+        sudo dpkg -i tinygo_${TINYGO_VERSION}_amd64.deb
+    - run: cargo install wasm-tools wkg
+    - run: script/init
     - run: script/build-examples
     - run: cargo build --verbose
     - run: cargo test --verbose
