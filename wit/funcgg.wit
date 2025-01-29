@@ -1,4 +1,4 @@
-package funcgg:runtime@0.1.0;
+package funcgg:function@0.1.0;
 
 // interface http {
 //   type status = u32;

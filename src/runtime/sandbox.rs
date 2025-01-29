@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use anyhow::Result;
 use log::{info, warn};
 use tokio::spawn;
@@ -17,13 +19,49 @@ const MAX_RUNTIME_DURATION: std::time::Duration = std::time::Duration::from_secs
 // epoch_interruption: https://docs.rs/wasmtime/latest/wasmtime/struct.Config.html#method.epoch_interruption
 // fuel: https://docs.rs/wasmtime/latest/wasmtime/struct.Config.html#method.consume_fuel
 
+#[derive(Debug, Clone)]
+pub struct HTTPHead {
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
+}
+
+impl From<HTTPHead> for actix_web::HttpResponseBuilder {
+    fn from(head: HTTPHead) -> Self {
+        let status = match actix_web::http::StatusCode::from_u16(head.status) {
+            Ok(status) => status,
+            Err(_) => {
+                warn!("invalid status code: {:?}", head.status);
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+            }
+        };
+
+        let mut builder = actix_web::HttpResponseBuilder::new(status);
+        for (key, value) in head.headers {
+            if let Ok(header_value) = actix_web::http::header::HeaderValue::from_str(&value) {
+                let _ = builder.append_header((key, header_value));
+            }
+        }
+        builder
+    }
+}
+
+impl Default for HTTPHead {
+    fn default() -> Self {
+        Self {
+            status: 200,
+            headers: vec![],
+        }
+    }
+}
+
 pub struct State {
     ctx: WasiCtx,
     table: ResourceTable,
+    head: Arc<Mutex<HTTPHead>>,
 }
 
 impl State {
-    pub fn new(stdin: InputStream, stdout: OutputStream) -> Self {
+    pub fn new(stdin: InputStream, stdout: OutputStream, head: Arc<Mutex<HTTPHead>>) -> Self {
         let ctx = WasiCtxBuilder::new()
             .env("FUNCGG", "1")
             .stdin(AsyncStdinStream::from(stdin))
@@ -33,6 +71,7 @@ impl State {
         Self {
             ctx,
             table: ResourceTable::default(),
+            head,
         }
     }
 }
@@ -46,13 +85,19 @@ impl WasiView for State {
     }
 }
 
-impl wit::funcgg::runtime::responder::Host for State {
+impl wit::funcgg::function::responder::Host for State {
     async fn set_status(&mut self, status: u16) {
         info!("set_status: {:?}", status);
+        if let Ok(mut head) = self.head.lock() {
+            head.status = status;
+        }
     }
 
     async fn set_header(&mut self, key: String, value: String) {
         info!("set_header: {:?}={:?}", key, value);
+        if let Ok(mut head) = self.head.lock() {
+            head.headers.push((key, value));
+        }
     }
 }
 
@@ -90,8 +135,9 @@ impl Sandbox {
         &mut self,
         stdin: InputStream,
         stdout: OutputStream,
+        head: Arc<Mutex<HTTPHead>>,
     ) -> Result<(), anyhow::Error> {
-        let state = State::new(stdin, stdout);
+        let state = State::new(stdin, stdout, head);
         let mut store = Store::new(&self.engine, state);
         store.set_epoch_deadline(1);
 
@@ -112,10 +158,10 @@ impl Sandbox {
         });
 
         let command = Command::instantiate_async(&mut store, &self.component, &self.linker).await?;
-        let result = command.wasi_cli_run().call_run(&mut store).await?;
+        // exit codes are "unstable" still: https://github.com/WebAssembly/wasi-cli/blob/d4fddec89fb9354509dbfa29a5557c58983f327a/wit/exit.wit#L15
+        let result = command.wasi_cli_run().call_run(&mut store).await;
         _ = finished_tx.send(());
 
-        // exit codes are "unstable" still: https://github.com/WebAssembly/wasi-cli/blob/d4fddec89fb9354509dbfa29a5557c58983f327a/wit/exit.wit#L15
         match result {
             Ok(_) => Ok(()),
             Err(_) => Err(anyhow::anyhow!("wasi command failed")),

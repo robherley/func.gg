@@ -6,11 +6,14 @@ wit_bindgen::generate!({
 // https://github.com/bytecodealliance/wasi-rs
 
 fn main() {
-    funcgg::runtime::responder::set_header("X-Foo", "bar");
-    funcgg::runtime::responder::set_status(200);
+    funcgg::function::responder::set_header("X-Foo", "bar");
+    funcgg::function::responder::set_header("Content-Type", "application/json");
+    funcgg::function::responder::set_status(201);
 
-    println!("Environment variables:");
-    for (key, value) in std::env::vars() {
-        println!("{}: {}", key, value);
+    println!("{{");
+    for (i, c) in ('a'..='z').enumerate() {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        println!("  \"{}\": \"{}\",", i, c);
     }
+    println!("}}");
 }
