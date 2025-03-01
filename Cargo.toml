@@ -15,6 +15,6 @@ log = "0.4.22"
 thiserror = "2.0.5"
 tokio = { version = "1.42.0", features = ["io-util", "rt", "macros"] }
 tokio-stream = "0.1.17"
-wasi-common = "29.0.1"
-wasmtime = { version = "29.0.1", features = ["async", "cache"] }
-wasmtime-wasi = "29.0.1"
+wasi-common = "30.0.2"
+wasmtime = { version = "30.0.2", features = ["async", "cache"] }
+wasmtime-wasi = "30.0.2"
