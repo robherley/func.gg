@@ -10,7 +10,7 @@ build_tinygo() {
   mkdir -p "$DIST"
   pushd "$DIR" > /dev/null
   echo "Building tinygo example..."
-  tinygo build -target=wasip2 -o "$DIST/example.tinygo.wasm" --wit-package ../../wit/ --wit-world functions
+  tinygo build -target=wasip2 -o "$DIST/example.tinygo.wasm" --wit-package ../../wit/ --wit-world run
   popd > /dev/null
 }
 
@@ -23,5 +23,5 @@ build_rust() {
   popd > /dev/null
 }
 
-# build_tinygo
+build_tinygo
 build_rust

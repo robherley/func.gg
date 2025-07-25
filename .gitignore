@@ -1,4 +1,5 @@
 examples/*/dist/
+examples/*/gen/
 wit/deps/
 tmp/
 

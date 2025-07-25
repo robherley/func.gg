@@ -1,5 +1,4 @@
 pub mod runtime;
-pub mod streams;
 
 pub mod wit {
     wasmtime::component::bindgen!({
@@ -46,4 +45,12 @@ pub mod http {
             anyhow!(err).into()
         }
     }
+}
+
+pub mod streams {
+    mod input;
+    pub use input::InputStream;
+
+    mod output;
+    pub use output::OutputStream;
 }
