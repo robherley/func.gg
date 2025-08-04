@@ -2,13 +2,10 @@ name: cargo
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 env:
   CARGO_TERM_COLOR: always
-  TINYGO_VERSION: "0.35.0"
 
 jobs:
   test:
@@ -16,12 +13,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: setup tinygo
-      run: |
-        wget https://github.com/tinygo-org/tinygo/releases/download/v${TINYGO_VERSION}/tinygo_${TINYGO_VERSION}_amd64.deb
-        sudo dpkg -i tinygo_${TINYGO_VERSION}_amd64.deb
-    - run: cargo install wasm-tools wkg
     - run: script/init
-    - run: script/build-examples
     - run: cargo build --verbose
     - run: cargo test --verbose
