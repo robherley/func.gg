@@ -80,50 +80,19 @@ impl JavaScriptRuntime {
     pub async fn invoke_handler(&mut self, request: HttpRequest) -> Result<HttpResponse> {
         self.state.borrow_mut().current_request = Some(request);
         
-        // TODO: move somewhere else, like a static file
-        let js_code = r#"
-            (async function() {
-                // Get the request data from the runtime
-                const request = getRequest();
-                
-                // Check if handler function exists
-                if (typeof handler !== 'function') {
-                    throw new Error('Handler function not found');
-                }
-                
-                if (!request) {
-                    throw new Error('No request data available');
-                }
-                
-                try {
-                    // Call the handler and await the result if it's a promise
-                    const response = await handler(request);
-                    
-                    // Ensure response has required fields
-                    if (!response || typeof response !== 'object') {
-                        throw new Error('Handler must return an object');
-                    }
-                    
-                    // Return the response object directly - no JSON serialization needed
-                    return {
-                        status: response.status || 200,
-                        headers: response.headers || {},
-                        body: response.body || null
-                    };
-                } catch (error) {
-                    return {
-                        status: 500,
-                        headers: {},
-                        body: "Error: " + error.message
-                    };
-                }
-            })()
-        "#;
+        let js_code = include_str!("./runtime/handler.js");
 
         // Execute the JavaScript and get the result
         let result = self.runtime.execute_script("<invoke>", js_code)?;
 
         info!("finished executing handler");
+
+        {
+            let scope = &mut self.runtime.handle_scope();
+            let local_value = deno_core::v8::Local::new(scope, result.clone());
+            let js_string = local_value.to_rust_string_lossy(scope);
+            info!("raw JS result before resolving: {}", js_string);
+        }
         
         // Resolve any promises
         let response_value = self.runtime.resolve(result).await?;

@@ -12,22 +12,7 @@ pub async fn health() -> Html<&'static str> {
 pub async fn invoke(State(pool): State<Arc<WorkerPool>>) -> Response {
     // TODO: temporary, eventually this should be served dynamically
     // possibly serve https://github.com/denoland/eszip
-    let js_code = r#"
-        async function handler(request) {
-            // Simulate async operation (e.g., database call, API request)
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            return {
-                status: 200,
-                headers: { "content-type": "text/html" },
-                body: `<h1>Async JavaScript Handler Response</h1>
-                       <p>Request method: ${request.method}</p>
-                       <p>Request path: ${request.url}</p>
-                       <p>Current time: ${new Date().toISOString()}</p>
-                       <p>Handler executed asynchronously!</p>`
-            };
-        }
-    "#;
+    let js_code = include_str!("./runtime/example.js");
     
     let req = HttpRequest {
         method: "GET".to_string(),
