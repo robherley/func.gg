@@ -1,10 +1,10 @@
 use anyhow::Result;
 use deno_core::{JsRuntime, RuntimeOptions, op2, OpState};
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HttpRequest {
@@ -14,7 +14,7 @@ pub struct HttpRequest {
     pub body: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HttpResponse {
     pub status: u16,
     pub headers: HashMap<String, String>,
@@ -49,22 +49,23 @@ deno_core::extension!(
 
 pub struct JavaScriptRuntime {
     runtime: JsRuntime,
-    state: Arc<RwLock<RuntimeState>>,
+    state: Rc<RefCell<RuntimeState>>,
 }
 
 impl JavaScriptRuntime {
     pub fn new() -> Result<Self> {
-        let state = Arc::new(RwLock::new(RuntimeState::default()));
+        let state = Rc::new(RefCell::new(RuntimeState::default()));
         let state_for_extension = state.clone();
         
+        // TODO: snapshotting???
         let runtime = JsRuntime::new(RuntimeOptions {
             extensions: vec![
                 funcgg_http::init(),
+                // TODO: think about other extensions (like other stdlibs, kv, etc)
             ],
             ..Default::default()
         });
 
-        // Put the state into the op_state
         runtime.op_state().borrow_mut().put(state_for_extension);
 
         Ok(Self { runtime, state })
@@ -77,10 +78,11 @@ impl JavaScriptRuntime {
     }
 
     pub async fn invoke_handler(&mut self, request: HttpRequest) -> Result<HttpResponse> {
-        self.state.write().unwrap().current_request = Some(request);
+        self.state.borrow_mut().current_request = Some(request);
         
+        // TODO: move somewhere else, like a static file
         let js_code = r#"
-            (function() {
+            (async function() {
                 // Get the request data from the runtime
                 const request = getRequest();
                 
@@ -94,7 +96,8 @@ impl JavaScriptRuntime {
                 }
                 
                 try {
-                    const response = handler(request);
+                    // Call the handler and await the result if it's a promise
+                    const response = await handler(request);
                     
                     // Ensure response has required fields
                     if (!response || typeof response !== 'object') {
@@ -119,22 +122,32 @@ impl JavaScriptRuntime {
 
         // Execute the JavaScript and get the result
         let result = self.runtime.execute_script("<invoke>", js_code)?;
+
+        info!("finished executing handler");
         
         // Resolve any promises
         let response_value = self.runtime.resolve(result).await?;
+
+        info!("finished resolving");
         
         // Get a handle scope for V8 operations
         let scope = &mut self.runtime.handle_scope();
+
+        info!("handle scope");
         
         // Convert the global handle to a local handle
         let local_value = deno_core::v8::Local::new(scope, response_value);
+
+        info!("local value");
         
         // Directly deserialize the V8 value to our HttpResponse struct
         let response: HttpResponse = deno_core::serde_v8::from_v8(scope, local_value)
             .map_err(|e| anyhow::anyhow!("Failed to deserialize response: {}", e))?;
+
+        info!("deserialized response: {:?}", response);
         
         // Clear the request data
-        self.state.write().unwrap().current_request = None;
+        self.state.borrow_mut().current_request = None;
         
         Ok(response)
     }

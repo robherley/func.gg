@@ -1,18 +1,28 @@
 mod routes;
 mod runtime;
+mod worker_pool;
 
+use std::sync::Arc;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use worker_pool::WorkerPool;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,tower_http=debug".into()),
+                .unwrap_or_else(|_| "debug".into()), // Changed to debug to see more
         )
-        .with(tracing_subscriber::fmt::layer())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(false)
+                .with_thread_ids(true)
+                .with_line_number(true)
+                .with_file(true)
+                .fmt_fields(tracing_subscriber::fmt::format::DefaultFields::default())
+        )
         .init();
 
     let addr = format!(
@@ -21,7 +31,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("PORT").unwrap_or("8081".into()),
     );
 
-    let app = routes::build()
+    let pool_size = std::env::var("WORKER_POOL_SIZE")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1));
+    
+    info!("Creating worker pool with {} workers", pool_size);
+    let worker_pool = Arc::new(WorkerPool::new(pool_size));
+
+    let app = routes::build(worker_pool)
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &axum::http::Request<_>| {
