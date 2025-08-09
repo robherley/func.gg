@@ -4,17 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-actix-http = "3.9.0"
-actix-web = "4.9.0"
 anyhow = "1.0.94"
-bytes = "1.9.0"
+axum = { version = "0.7", features = ["macros"] }
+deno_core = "0.353.0"
 env_logger = "0.11.5"
-futures = "0.3.31"
-futures-util = "0.3.31"
-log = "0.4.22"
-thiserror = "2.0.5"
-tokio = { version = "1.42.0", features = ["io-util", "rt", "macros"] }
-tokio-stream = "0.1.17"
-wasi-common = "29.0.1"
-wasmtime = { version = "29.0.1", features = ["async", "cache"] }
-wasmtime-wasi = "29.0.1"
+log = { version = "0.4.22", features = ["kv"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_v8 = "0.262.0"
+tokio = { version = "1.42.0", features = ["io-util", "rt", "macros", "net"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["trace", "request-id"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.0", features = ["v7", "serde"] }
