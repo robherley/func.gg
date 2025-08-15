@@ -42,7 +42,6 @@ impl Worker {
     async fn run(&mut self) {
         log::info!(worker_id = self.id; "Worker starting");
         
-        // Create a single runtime for this worker thread
         let mut runtime = match JavaScriptRuntime::new() {
             Ok(rt) => rt,
             Err(e) => {
@@ -87,12 +86,10 @@ impl Worker {
         runtime: &mut JavaScriptRuntime,
         request: WorkerRequest,
     ) -> Result<HttpResponse, String> {
-        // Load the JavaScript handler
-        if let Err(e) = runtime.load_handler(request.js_code).await {
-            return Err(format!("Failed to load handler: {}", e));
-        }
+        // if let Err(e) = runtime.load_handler(request.js_code).await {
+        //     return Err(format!("Failed to load handler: {}", e));
+        // }
 
-        // Invoke the handler with the HTTP request
         match runtime.invoke_handler(request.http_request).await {
             Ok(response) => Ok(response),
             Err(e) => Err(format!("Handler invocation failed: {}", e)),

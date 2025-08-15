@@ -1,5 +1,5 @@
 use anyhow::Result;
-use deno_core::{JsRuntime, RuntimeOptions, op2, OpState};
+use deno_core::{op2, JsRuntime, OpState, RuntimeOptions, StaticModuleLoader};
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -56,6 +56,11 @@ impl JavaScriptRuntime {
     pub fn new() -> Result<Self> {
         let state = Rc::new(RefCell::new(RuntimeState::default()));
         let state_for_extension = state.clone();
+
+        let module_loader = StaticModuleLoader::with(
+            "func:http".parse().expect("bad module specifier"), // TODO: build full map of modules
+            include_str!("./runtime/handler.js"),
+        );
         
         // TODO: snapshotting???
         let runtime = JsRuntime::new(RuntimeOptions {
@@ -63,6 +68,7 @@ impl JavaScriptRuntime {
                 funcgg_http::init(),
                 // TODO: think about other extensions (like other stdlibs, kv, etc)
             ],
+            module_loader: Some(Rc::new(module_loader)),
             ..Default::default()
         });
 
@@ -71,53 +77,52 @@ impl JavaScriptRuntime {
         Ok(Self { runtime, state })
     }
 
-    pub async fn load_handler(&mut self, js_code: String) -> Result<()> {
-        self.runtime.execute_script("<handler>", js_code)?;
-        self.runtime.run_event_loop(Default::default()).await?;
-        Ok(())
-    }
-
     pub async fn invoke_handler(&mut self, request: HttpRequest) -> Result<HttpResponse> {
-        self.state.borrow_mut().current_request = Some(request);
         
-        let js_code = include_str!("./runtime/handler.js");
+        // // This wrapper calls the user's handler and returns a Promise
+        // let js_code = include_str!("./runtime/handler.js");
 
-        // Execute the JavaScript and get the result
-        let result = self.runtime.execute_script("<invoke>", js_code)?;
+        // // Execute the wrapper script; the last expression evaluates to a Promise
+        // let result = self.runtime.execute_script("<invoke>", js_code)?;
 
-        info!("finished executing handler");
+        // info!("finished executing handler");
 
-        {
-            let scope = &mut self.runtime.handle_scope();
-            let local_value = deno_core::v8::Local::new(scope, result.clone());
-            let js_string = local_value.to_rust_string_lossy(scope);
-            info!("raw JS result before resolving: {}", js_string);
-        }
+        // {
+        //     let scope = &mut self.runtime.handle_scope();
+        //     let local_value = deno_core::v8::Local::new(scope, result.clone());
+        //     let js_string = local_value.to_rust_string_lossy(scope);
+        //     info!("raw JS result before resolving: {}", js_string);
+        // }
         
-        // Resolve any promises
-        let response_value = self.runtime.resolve(result).await?;
+        // // Await the Promise and drive the event loop until it settles
+        // let response_value = self.runtime.resolve(result).await?;
 
-        info!("finished resolving");
+        // info!("finished resolving");
         
-        // Get a handle scope for V8 operations
-        let scope = &mut self.runtime.handle_scope();
+        // // Convert the resolved V8 value to our Rust HttpResponse
+        // let scope = &mut self.runtime.handle_scope();
 
-        info!("handle scope");
+        // info!("handle scope");
         
-        // Convert the global handle to a local handle
-        let local_value = deno_core::v8::Local::new(scope, response_value);
+        // let local_value = deno_core::v8::Local::new(scope, response_value);
 
-        info!("local value");
+        // info!("local value");
         
-        // Directly deserialize the V8 value to our HttpResponse struct
-        let response: HttpResponse = deno_core::serde_v8::from_v8(scope, local_value)
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize response: {}", e))?;
+        // let response: HttpResponse = deno_core::serde_v8::from_v8(scope, local_value)
+        //     .map_err(|e| anyhow::anyhow!("Failed to deserialize response: {}", e))?;
+    
+        
+        let main_mod_specifier = "func:handler".parse().expect("bad module specifier");
+        let mod_id = self.runtime.
+            load_main_es_module_from_code(
+                &main_mod_specifier,
+                include_str!("./runtime/handler.js"),
+            ).await?;
 
-        info!("deserialized response: {:?}", response);
-        
-        // Clear the request data
-        self.state.borrow_mut().current_request = None;
-        
-        Ok(response)
+        let result = self.runtime.mod_evaluate(mod_id);
+        self.runtime.run_event_loop(Default::default()).await?;
+        result.await?;
+
+        Ok(HttpResponse { status: 200, headers: HashMap::new(), body: String::new() })
     }
 }

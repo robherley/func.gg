@@ -1,38 +1,36 @@
-function __FUNCGG_main() {
+export async function handler(response) {
     // Get the request data from the runtime
     const request = getRequest();
-    
-    // Check if handler function exists
+
+    // Validate handler existence
     if (typeof handler !== 'function') {
         throw new Error('Handler function not found');
     }
-    
+
     if (!request) {
         throw new Error('No request data available');
     }
-    
+
     try {
-        // Call the handler and await the result if it's a promise
-        const response = handler(request);
-        
+        // Await the handler so both sync and async handlers work
+        // const response = await handler(request);
+
         // Ensure response has required fields
-        if (!response || typeof response !== 'object') {
-            throw new Error('Handler must return an object');
-        }
-        
-        // Return the response object directly - no JSON serialization needed
+        // if (!response || typeof response !== 'object') {
+        //     throw new Error('Handler must return an object');
+        // }
+
+        // Normalize and return the response object
         return {
-            status: response.status || 200,
-            headers: response.headers || {},
-            body: response.body || null
+            status: response.status ?? 200,
+            headers: response.headers ?? {},
+            body: response.body ?? null,
         };
     } catch (error) {
         return {
             status: 500,
             headers: {},
-            body: "Error: " + error.message
+            body: "Error: " + (error && error.message ? error.message : String(error)),
         };
     }
 }
-
-__FUNCGG_main();
