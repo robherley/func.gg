@@ -86,11 +86,7 @@ impl Worker {
         runtime: &mut JavaScriptRuntime,
         request: WorkerRequest,
     ) -> Result<HttpResponse, String> {
-        // if let Err(e) = runtime.load_handler(request.js_code).await {
-        //     return Err(format!("Failed to load handler: {}", e));
-        // }
-
-        match runtime.invoke_handler(request.http_request).await {
+        match runtime.invoke_handler(request.js_code, request.http_request).await {
             Ok(response) => Ok(response),
             Err(e) => Err(format!("Handler invocation failed: {}", e)),
         }

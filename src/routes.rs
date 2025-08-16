@@ -12,7 +12,7 @@ pub async fn health() -> Html<&'static str> {
 pub async fn invoke(State(pool): State<Arc<WorkerPool>>) -> Response {
     // TODO: temporary, eventually this should be served dynamically
     // possibly serve https://github.com/denoland/eszip
-    let js_code = include_str!("./runtime/example.js");
+    let js_code = include_str!("./runtime/worker.js");
     
     let req = HttpRequest {
         method: "GET".to_string(),
