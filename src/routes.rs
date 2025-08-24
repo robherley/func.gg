@@ -1,8 +1,3 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use crate::runtime::HttpRequest;
-use crate::worker_pool::WorkerPool;
 use axum::{
     body::Body,
     extract::State,
@@ -11,17 +6,22 @@ use axum::{
     routing::get,
     Router,
 };
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use crate::runtime;
+use crate::worker;
 
 pub async fn health() -> Html<&'static str> {
     Html("OK")
 }
 
-pub async fn invoke(State(pool): State<Arc<WorkerPool>>) -> Response {
+pub async fn invoke(State(pool): State<Arc<worker::Pool>>) -> Response {
     // TODO: temporary, eventually this should be served dynamically
     // possibly serve https://github.com/denoland/eszip
     let js_code = include_str!("../examples/basic.js");
 
-    let req = HttpRequest {
+    let req = runtime::http::Request {
         method: "GET".to_string(),
         url: "/".to_string(),
         headers: HashMap::new(),
@@ -44,7 +44,7 @@ pub async fn invoke(State(pool): State<Arc<WorkerPool>>) -> Response {
     builder.body(Body::from(res.body)).unwrap()
 }
 
-pub fn build(pool: Arc<WorkerPool>) -> Router {
+pub fn build(pool: Arc<worker::Pool>) -> Router {
     Router::new()
         .route("/_health", get(health))
         .route("/", get(invoke))

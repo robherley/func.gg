@@ -1,105 +1,22 @@
 use anyhow::Result;
 use deno_core::JsRuntime;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
 use uuid::Uuid;
 
-use crate::runtime::{HttpRequest, HttpResponse, JavaScriptRuntime};
+use super::worker::{Worker, WorkerRequest, WorkerResponse};
+use crate::runtime::http;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkerRequest {
-    pub id: Uuid,
-    pub js_code: String,
-    pub http_request: HttpRequest,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkerResponse {
-    pub id: Uuid,
-    pub result: Result<HttpResponse, String>,
-}
-
-struct Worker {
-    id: usize,
-    request_rx: mpsc::UnboundedReceiver<WorkerRequest>,
-    responder_tx: mpsc::UnboundedSender<WorkerResponse>,
-}
-
-impl Worker {
-    fn new(
-        id: usize,
-        request_rx: mpsc::UnboundedReceiver<WorkerRequest>,
-        responder_tx: mpsc::UnboundedSender<WorkerResponse>,
-    ) -> Self {
-        Self {
-            id,
-            request_rx,
-            responder_tx,
-        }
-    }
-
-    async fn run(&mut self) {
-        log::info!(worker_id = self.id; "Worker {} starting", self.id);
-
-        while let Some(request) = self.request_rx.recv().await {
-            let request_id = request.id;
-            log::info!(
-                worker_id = self.id,
-                request_id:? = request_id;
-                "Worker accepted request"
-            );
-
-            let result = self.process_request(request).await;
-
-            let response = WorkerResponse {
-                id: request_id,
-                result,
-            };
-
-            if let Err(e) = self.responder_tx.send(response) {
-                log::error!(
-                    worker_id = self.id,
-                    error:? = e;
-                    "Failed to send response"
-                );
-                break;
-            }
-        }
-
-        log::info!(worker_id = self.id; "Worker shutting down");
-    }
-
-    async fn process_request(&self, request: WorkerRequest) -> Result<HttpResponse, String> {
-        let mut runtime = match JavaScriptRuntime::new(request.id) {
-            Ok(rt) => rt,
-            Err(e) => {
-                log::error!(
-                    worker_id = self.id,
-                    error:? = e;
-                    "Failed to create JavaScript runtime"
-                );
-                return Err(format!("failed to create runtime: {}", e));
-            }
-        };
-
-        match runtime.execute(request.js_code, request.http_request).await {
-            Ok(response) => Ok(response),
-            Err(e) => Err(format!("handler invocation failed: {}", e)),
-        }
-    }
-}
-
-pub struct WorkerPool {
+pub struct Pool {
     worker_txs: Vec<mpsc::UnboundedSender<WorkerRequest>>,
     responder_rx: Arc<Mutex<mpsc::UnboundedReceiver<WorkerResponse>>>,
-    pending_requests: Arc<Mutex<HashMap<Uuid, oneshot::Sender<Result<HttpResponse, String>>>>>,
+    pending_requests: Arc<Mutex<HashMap<Uuid, oneshot::Sender<Result<http::Response, String>>>>>,
     current_worker_idx: Arc<Mutex<usize>>,
     pool_size: usize,
 }
 
-impl WorkerPool {
+impl Pool {
     pub fn new(pool_size: usize) -> Self {
         let (responder_tx, responder_rx) = mpsc::unbounded_channel();
         let worker_txs = Vec::with_capacity(pool_size);
@@ -120,8 +37,8 @@ impl WorkerPool {
     pub async fn handle(
         &self,
         js_code: String,
-        http_request: HttpRequest,
-    ) -> Result<HttpResponse, String> {
+        http_request: http::Request,
+    ) -> Result<http::Response, String> {
         let request_id = Uuid::now_v7();
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -197,7 +114,7 @@ impl WorkerPool {
     async fn insert_pending(
         &self,
         request_id: Uuid,
-        response_tx: oneshot::Sender<Result<HttpResponse, String>>,
+        response_tx: oneshot::Sender<Result<http::Response, String>>,
     ) {
         let mut pending = self.pending_requests.lock().await;
         pending.insert(request_id, response_tx);

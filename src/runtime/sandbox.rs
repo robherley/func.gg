@@ -3,12 +3,12 @@ use deno_core::url::Url;
 use deno_core::{JsRuntime, RuntimeOptions};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::LazyLock;
 use uuid::Uuid;
 
-use crate::runtime::ext;
+use super::ext;
+use super::http;
 
 static WORKER_CODE: &str = include_str!("./js/worker.js");
 static WORKER_MOD_SPECIFIER: LazyLock<Url> =
@@ -17,36 +17,21 @@ static WORKER_MOD_SPECIFIER: LazyLock<Url> =
 static USER_MOD_SPECIFIER: LazyLock<Url> =
     LazyLock::new(|| "func:user-code".parse().expect("bad module specifier"));
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct HttpRequest {
-    pub method: String,
-    pub url: String,
-    pub headers: HashMap<String, String>,
-    pub body: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct HttpResponse {
-    pub status: u16,
-    pub headers: HashMap<String, String>,
-    pub body: String,
-}
-
 #[derive(Default, Serialize, Deserialize)]
-pub struct RuntimeState {
-    pub req: Option<HttpRequest>,
-    pub res: Option<HttpResponse>,
+pub struct State {
+    pub req: Option<http::Request>,
+    pub res: Option<http::Response>,
     pub request_id: Uuid,
 }
 
-pub struct JavaScriptRuntime {
+pub struct Sandbox {
     pub runtime: JsRuntime,
-    pub state: Rc<RefCell<RuntimeState>>,
+    pub state: Rc<RefCell<State>>,
 }
 
-impl JavaScriptRuntime {
+impl Sandbox {
     pub fn new(request_id: Uuid) -> Result<Self> {
-        let state = Rc::new(RefCell::new(RuntimeState {
+        let state = Rc::new(RefCell::new(State {
             request_id,
             ..Default::default()
         }));
@@ -68,8 +53,8 @@ impl JavaScriptRuntime {
     pub async fn execute(
         &mut self,
         user_code: String,
-        request: HttpRequest,
-    ) -> Result<HttpResponse> {
+        request: http::Request,
+    ) -> Result<http::Response> {
         let _ = self
             .runtime
             .load_side_es_module_from_code(&USER_MOD_SPECIFIER, user_code)
