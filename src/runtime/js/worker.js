@@ -1,0 +1,48 @@
+async function resolveHandlerMethod() {
+  const mod = await import("func:user-code");
+
+  if (typeof mod.handler === "function") {
+    return mod.handler;
+  }
+
+  if (
+    typeof mod.default === "object" &&
+    typeof mod.default.handler === "function"
+  ) {
+    return mod.default.handler;
+  }
+
+  if (typeof mod.default === "function") {
+    return mod.default;
+  }
+
+  throw new Error("func.gg(UserError): Handler Method Not Defined");
+}
+
+async function worker() {
+  try {
+    const req = Func.request;
+    const handler = await resolveHandlerMethod();
+    const res = await handler(req);
+
+    if (!res || typeof res !== "object") {
+      throw new Error("invalid response");
+    }
+
+    return res;
+  } catch (error) {
+    const msg = error && error.message ? error.message : String(error);
+    log(`Error: ${msg}`);
+    return {
+      status: 500,
+      headers: {},
+      body: `Internal Server Error: ${msg}`,
+    };
+  }
+}
+
+const res = await worker();
+log(`Response Status: ${res.status}`);
+log(`Response Headers: ${JSON.stringify(res.headers)}`);
+log(`Response Body: ${res.body}`);
+Func.response = res;

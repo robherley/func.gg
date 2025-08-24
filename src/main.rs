@@ -11,17 +11,13 @@ use worker_pool::WorkerPool;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "debug".into()), // Changed to debug to see more
-        )
+        .with(tracing_subscriber::EnvFilter::from_default_env())
         .with(
             tracing_subscriber::fmt::layer()
                 .with_target(false)
                 .with_thread_ids(true)
                 .with_line_number(true)
-                .with_file(true)
-                .fmt_fields(tracing_subscriber::fmt::format::DefaultFields::default())
+                .with_file(true),
         )
         .init();
 
@@ -34,37 +30,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool_size = std::env::var("WORKER_POOL_SIZE")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(1));
-    
+        .unwrap_or(
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1),
+        );
+
     info!("Creating worker pool with {} workers", pool_size);
     let worker_pool = Arc::new(WorkerPool::new(pool_size));
 
-    let app = routes::build(worker_pool)
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(|request: &axum::http::Request<_>| {
-                    tracing::info_span!(
-                        "http_request",
-                        method = %request.method(),
-                        uri = %request.uri(),
-                        version = ?request.version(),
-                    )
-                })
-                .on_response(|response: &axum::http::Response<_>, latency: std::time::Duration, _span: &tracing::Span| {
+    let app = routes::build(worker_pool).layer(
+        TraceLayer::new_for_http()
+            .make_span_with(|request: &axum::http::Request<_>| {
+                tracing::info_span!(
+                    "http_request",
+                    method = %request.method(),
+                    uri = %request.uri(),
+                    version = ?request.version(),
+                )
+            })
+            .on_response(
+                |response: &axum::http::Response<_>,
+                 latency: std::time::Duration,
+                 _span: &tracing::Span| {
                     tracing::info!(
                         status = response.status().as_u16(),
                         latency = ?latency,
                         "response"
                     );
-                }),
-        );
+                },
+            ),
+    );
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Server running on {}", addr);
-    
+
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }

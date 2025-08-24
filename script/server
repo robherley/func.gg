@@ -1,5 +1,3 @@
 #!/usr/bin/env bash
 
-set -eo pipefail
-
-cargo run
+RUST_LOG=debug cargo run

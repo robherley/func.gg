@@ -1,9 +1,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::{body::Body, http::StatusCode, response::{Html, IntoResponse, Response}, routing::get, Router, extract::State};
 use crate::runtime::HttpRequest;
 use crate::worker_pool::WorkerPool;
+use axum::{
+    body::Body,
+    extract::State,
+    http::StatusCode,
+    response::{Html, IntoResponse, Response},
+    routing::get,
+    Router,
+};
 
 pub async fn health() -> Html<&'static str> {
     Html("OK")
@@ -12,8 +19,8 @@ pub async fn health() -> Html<&'static str> {
 pub async fn invoke(State(pool): State<Arc<WorkerPool>>) -> Response {
     // TODO: temporary, eventually this should be served dynamically
     // possibly serve https://github.com/denoland/eszip
-    let js_code = include_str!("./runtime/worker.js");
-    
+    let js_code = include_str!("../examples/basic.js");
+
     let req = HttpRequest {
         method: "GET".to_string(),
         url: "/".to_string(),
@@ -21,7 +28,7 @@ pub async fn invoke(State(pool): State<Arc<WorkerPool>>) -> Response {
         body: None,
     };
 
-    let res = match pool.execute(js_code.to_string(), req).await {
+    let res = match pool.handle(js_code.to_string(), req).await {
         Ok(r) => r,
         Err(e) => {
             log::error!("Handler invocation failed: {}", e);
