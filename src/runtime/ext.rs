@@ -1,7 +1,9 @@
-use crate::runtime::*;
 use deno_core::{op2, OpState};
 use std::cell::RefCell;
 use std::rc::Rc;
+
+use super::http;
+use super::sandbox::State;
 
 deno_core::extension!(
     funcgg_runtime,
@@ -10,22 +12,29 @@ deno_core::extension!(
     esm = [dir "src/runtime/js/ext", "01_tmp.js", "99_entrypoint.js"]
 );
 
-#[op2]
-#[serde]
-fn op_get_request(state: &mut OpState) -> Option<HttpRequest> {
-    let runtime_state = state.borrow::<Rc<RefCell<RuntimeState>>>();
-    runtime_state.borrow().req.clone()
+fn get(op_state: &OpState) -> std::cell::Ref<State> {
+    let st = op_state.borrow::<Rc<RefCell<State>>>();
+    st.borrow()
+}
+
+fn get_mut(op_state: &mut OpState) -> std::cell::RefMut<State> {
+    let st = op_state.borrow_mut::<Rc<RefCell<State>>>();
+    st.borrow_mut()
 }
 
 #[op2]
-fn op_set_response(state: &mut OpState, #[serde] res: HttpResponse) {
-    let runtime_state = state.borrow_mut::<Rc<RefCell<RuntimeState>>>();
-    runtime_state.borrow_mut().res = Some(res);
+#[serde]
+fn op_get_request(state: &mut OpState) -> Option<http::Request> {
+    get(state).req.clone()
+}
+
+#[op2]
+fn op_set_response(state: &mut OpState, #[serde] res: http::Response) {
+    get_mut(state).res = Some(res);
 }
 
 #[op2]
 #[string]
 fn op_get_request_id(state: &mut OpState) -> String {
-    let runtime_state = state.borrow::<Rc<RefCell<RuntimeState>>>();
-    runtime_state.borrow().request_id.to_string()
+    get(state).request_id.to_string()
 }
