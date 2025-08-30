@@ -1,6 +1,7 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use deno_core::url::Url;
 use deno_core::{JsRuntime, RuntimeOptions};
+use rustls::crypto::{CryptoProvider, aws_lc_rs};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -9,6 +10,7 @@ use uuid::Uuid;
 
 use super::ext;
 use super::http;
+use super::loader;
 
 static WORKER_CODE: &str = include_str!("./js/worker.js");
 static WORKER_MOD_SPECIFIER: LazyLock<Url> =
@@ -31,17 +33,19 @@ pub struct Sandbox {
 
 impl Sandbox {
     pub fn new(request_id: Uuid) -> Result<Self> {
+        _ = CryptoProvider::install_default(aws_lc_rs::default_provider());
+
         let state = Rc::new(RefCell::new(State {
             request_id,
             ..Default::default()
         }));
 
+        let extension_transpiler = Rc::new(loader::transpile);
+
         // TODO: snapshotting???
         let runtime = JsRuntime::new(RuntimeOptions {
-            extensions: vec![
-                ext::funcgg_runtime::init(),
-                // TODO: think about other extensions (like other stdlibs, kv, etc)
-            ],
+            extensions: ext::extensions(),
+            extension_transpiler: Some(extension_transpiler),
             ..Default::default()
         });
 
@@ -74,7 +78,7 @@ impl Sandbox {
             .borrow_mut()
             .res
             .take()
-            .ok_or_else(|| anyhow!("No response set in the runtime state"))?;
+            .ok_or_else(|| anyhow!("No response set in the runtime state"))?; // TODO: default to an OK response?
 
         // TODO: status validation, append/overwrite headers, etc
 

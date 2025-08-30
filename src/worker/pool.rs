@@ -2,7 +2,7 @@ use anyhow::Result;
 use deno_core::JsRuntime;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use uuid::Uuid;
 
 use super::worker::{Worker, WorkerRequest, WorkerResponse};
@@ -80,9 +80,12 @@ impl Pool {
 
             let responder_tx = responder_tx.clone();
 
-            // each runtime needs its own thread
+            // each runtime needs its own thread, specifically with tokio's current thread runtime
             std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().unwrap();
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
                 rt.block_on(async {
                     let mut worker = Worker::new(i, request_rx, responder_tx);
                     worker.run().await;

@@ -1,4 +1,10 @@
-import "ext:funcgg_runtime/01_tmp.js";
+import "ext:funcgg_runtime/funcgg_tmp.js";
+import "ext:funcgg_runtime/init.deno_webidl.js";
+import "ext:funcgg_runtime/init.deno_console.js";
+import "ext:funcgg_runtime/init.deno_url.js";
+import "ext:funcgg_runtime/init.deno_web.js";
+import "ext:funcgg_runtime/init.deno_net.js";
+import "ext:funcgg_runtime/init.deno_fetch.js";
 
 const { op_get_request, op_set_response, op_get_request_id } = Deno.core.ops;
 
