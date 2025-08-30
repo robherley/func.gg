@@ -43,11 +43,11 @@ impl Sandbox {
         let extension_transpiler = Rc::new(loader::transpile);
 
         // TODO: snapshotting???
-        let runtime = JsRuntime::new(RuntimeOptions {
+        let runtime = JsRuntime::try_new(RuntimeOptions {
             extensions: ext::extensions(),
             extension_transpiler: Some(extension_transpiler),
             ..Default::default()
-        });
+        })?;
 
         runtime.op_state().borrow_mut().put(state.clone());
 
@@ -73,14 +73,15 @@ impl Sandbox {
         self.runtime.run_event_loop(Default::default()).await?;
         result.await?;
 
-        let res = self
+        let mut res: http::Response = self
             .state
             .borrow_mut()
             .res
             .take()
             .ok_or_else(|| anyhow!("No response set in the runtime state"))?; // TODO: default to an OK response?
 
-        // TODO: status validation, append/overwrite headers, etc
+        res.default_and_validate()?;
+        res.set_runtime_headers(self.state.borrow().request_id);
 
         Ok(res)
     }

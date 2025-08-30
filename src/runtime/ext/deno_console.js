@@ -1,3 +1,5 @@
+// https://github.com/denoland/deno/tree/main/ext/console
+
 import * as console from "ext:deno_console/01_console.js";
 
 Object.defineProperty(globalThis, "console", {

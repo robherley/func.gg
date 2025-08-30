@@ -30,8 +30,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(
+            // default to 2x + 1 logical cores, assume we're mostly i/o bound
             std::thread::available_parallelism()
-                .map(|n| n.get())
+                .map(|n| 2 * n.get() + 1)
                 .unwrap_or(1),
         );
 

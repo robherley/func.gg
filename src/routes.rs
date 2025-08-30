@@ -1,10 +1,9 @@
 use axum::{
-    body::Body,
-    extract::State,
-    http::StatusCode,
-    response::{Html, IntoResponse, Response},
-    routing::get,
     Router,
+    body::{Body, to_bytes},
+    extract::{Request, State},
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -12,20 +11,45 @@ use std::sync::Arc;
 use crate::runtime;
 use crate::worker;
 
-pub async fn health() -> Html<&'static str> {
-    Html("OK")
-}
-
-pub async fn invoke(State(pool): State<Arc<worker::Pool>>) -> Response {
+pub async fn invoke(State(pool): State<Arc<worker::Pool>>, request: Request) -> Response {
     // TODO: temporary, eventually this should be served dynamically
     // possibly serve https://github.com/denoland/eszip
     let js_code = include_str!("../examples/basic.js");
 
+    let method = request.method().to_string();
+    let uri = request.uri().to_string();
+    let headers = request
+        .headers()
+        .iter()
+        .map(|(name, value)| (name.to_string(), value.to_str().unwrap_or("").to_string()))
+        .collect::<HashMap<String, String>>(); // TODO: any nonsense we should filter out?
+
+    // TODO: this should be streamed on both ends, as raw bytes not utf-8
+    let body = match to_bytes(request.into_body(), 1024 * 1024).await {
+        Ok(bytes) => {
+            if bytes.is_empty() {
+                None
+            } else {
+                match String::from_utf8(bytes.to_vec()) {
+                    Ok(body_string) => Some(body_string),
+                    Err(_) => {
+                        log::warn!("request body contains invalid UTF-8, treating as empty");
+                        None
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("failed to read request body: {}", e);
+            return (StatusCode::BAD_REQUEST, "Unable to read request body").into_response();
+        }
+    };
+
     let req = runtime::http::Request {
-        method: "GET".to_string(),
-        url: "/".to_string(),
-        headers: HashMap::new(),
-        body: None,
+        method,
+        uri,
+        headers,
+        body,
     };
 
     let res = match pool.handle(js_code.to_string(), req).await {
@@ -45,8 +69,5 @@ pub async fn invoke(State(pool): State<Arc<worker::Pool>>) -> Response {
 }
 
 pub fn build(pool: Arc<worker::Pool>) -> Router {
-    Router::new()
-        .route("/_health", get(health))
-        .route("/", get(invoke))
-        .with_state(pool)
+    Router::new().fallback(invoke).with_state(pool)
 }
