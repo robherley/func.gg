@@ -1,4 +1,5 @@
 mod ext;
+mod loader;
 mod sandbox;
 
 pub mod http;

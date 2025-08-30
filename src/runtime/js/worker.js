@@ -32,7 +32,7 @@ async function worker() {
     return res;
   } catch (error) {
     const msg = error && error.message ? error.message : String(error);
-    log(`Error: ${msg}`);
+    console.log(`Error: ${msg}`);
     return {
       status: 500,
       headers: {},
@@ -42,7 +42,7 @@ async function worker() {
 }
 
 const res = await worker();
-log(`Response Status: ${res.status}`);
-log(`Response Headers: ${JSON.stringify(res.headers)}`);
-log(`Response Body: ${res.body}`);
+console.log(`Response Status: ${res.status}`);
+console.log(`Response Headers: ${JSON.stringify(res.headers)}`);
+console.log(`Response Body: ${res.body}`);
 Func.response = res;
