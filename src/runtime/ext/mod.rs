@@ -21,7 +21,6 @@ deno_core::extension!(
     esm_entry_point = "ext:funcgg_runtime/funcgg_entrypoint.js",
     esm = [
         dir "src/runtime/ext",
-        "funcgg_tmp.js",
         "deno_webidl.js",
         "deno_console.js",
         "deno_url.js",
@@ -39,6 +38,7 @@ pub fn extensions() -> Vec<deno_core::Extension> {
         deno_webidl::init(),
         deno_console::init(),
         deno_url::init(),
+        // TODO: look more into these configurations
         deno_web::init::<Permissions>(Default::default(), None),
         deno_net::init::<Permissions>(None, None),
         deno_fetch::init::<Permissions>(Default::default()),

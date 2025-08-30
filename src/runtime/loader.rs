@@ -1,7 +1,6 @@
 use deno_ast::{MediaType, ParseParams};
 use deno_core::{ModuleCodeString, ModuleName, ModuleSpecifier, SourceMapData};
 use deno_error::JsErrorBox;
-use tracing::info;
 
 pub fn transpile(
     mod_name: ModuleName,
@@ -39,8 +38,6 @@ pub fn transpile(
         )
         .map_err(|e| deno_error::JsErrorBox::generic(format!("Transpile error: {}", e)))?
         .into_source();
-
-    info!("transpiling: {}", mod_name);
 
     let src_map = match result.source_map {
         Some(map) => Some(map.into_bytes().into()),

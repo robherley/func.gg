@@ -1,9 +1,8 @@
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::runtime::{http, Sandbox};
+use crate::runtime::{Sandbox, http};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkerRequest {
@@ -77,13 +76,13 @@ impl Worker {
                     error:? = e;
                     "Failed to create JavaScript runtime"
                 );
-                return Err(format!("failed to create runtime: {}", e));
+                return Err(format!("unable to create runtime: {}", e));
             }
         };
 
-        match runtime.execute(request.js_code, request.http_request).await {
-            Ok(response) => Ok(response),
-            Err(e) => Err(format!("handler invocation failed: {}", e)),
-        }
+        runtime
+            .execute(request.js_code, request.http_request)
+            .await
+            .map_err(|e| format!("handler invocation failed: {}", e))
     }
 }

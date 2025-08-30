@@ -1,4 +1,3 @@
-import "ext:funcgg_runtime/funcgg_tmp.js";
 import "ext:funcgg_runtime/deno_webidl.js";
 import "ext:funcgg_runtime/deno_console.js";
 import "ext:funcgg_runtime/deno_url.js";
