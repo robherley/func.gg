@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::LazyLock;
+use std::time::Duration;
+use tokio::time::timeout;
 use uuid::Uuid;
 
 use super::ext;
@@ -58,31 +60,114 @@ impl Sandbox {
         &mut self,
         user_code: String,
         request: http::Request,
+        timeout_duration: Duration,
     ) -> Result<http::Response> {
-        let _ = self
-            .runtime
-            .load_side_es_module_from_code(&USER_MOD_SPECIFIER, user_code)
-            .await?;
-        let entrypoint_id = self
-            .runtime
-            .load_main_es_module_from_code(&WORKER_MOD_SPECIFIER, WORKER_CODE)
-            .await?;
+        let execution_result = timeout(timeout_duration, async {
+            let _ = self
+                .runtime
+                .load_side_es_module_from_code(&USER_MOD_SPECIFIER, user_code)
+                .await?;
+            let entrypoint_id = self
+                .runtime
+                .load_main_es_module_from_code(&WORKER_MOD_SPECIFIER, WORKER_CODE)
+                .await?;
 
-        self.state.borrow_mut().req = Some(request);
-        let result = self.runtime.mod_evaluate(entrypoint_id);
-        self.runtime.run_event_loop(Default::default()).await?;
-        result.await?;
+            self.state.borrow_mut().req = Some(request);
+            let result = self.runtime.mod_evaluate(entrypoint_id);
+            self.runtime.run_event_loop(Default::default()).await?;
+            result.await?;
+            Ok::<(), anyhow::Error>(())
+        })
+        .await;
 
-        let mut res: http::Response = self
-            .state
-            .borrow_mut()
-            .res
-            .take()
-            .ok_or_else(|| anyhow!("No response set in the runtime state"))?; // TODO: default to an OK response?
+        match execution_result {
+            Ok(Ok(())) => {
+                // completed
+            }
+            Ok(Err(e)) => {
+                // some error?
+                return Err(e);
+            }
+            Err(_) => {
+                // timeout
+                return Err(anyhow!("JavaScript execution timed out"));
+            }
+        }
 
+        let mut res: http::Response = self.state.borrow_mut().res.take().unwrap_or_default();
         res.default_and_validate()?;
         res.set_runtime_headers(self.state.borrow().request_id);
 
         Ok(res)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn test_execute_timeout() {
+        let request_id = Uuid::new_v4();
+        let mut sandbox = Sandbox::new(request_id).expect("Failed to create sandbox");
+
+        let long_running_code = r#"
+            export default async function handler(request) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                return { status: 200, headers: {}, body: "This should timeout" };
+            }
+        "#
+        .to_string();
+
+        let request = http::Request {
+            method: "GET".to_string(),
+            uri: "/".to_string(),
+            headers: HashMap::new(),
+            body: None,
+        };
+
+        let timeout_duration = Duration::from_millis(100);
+
+        let result = sandbox
+            .execute(long_running_code, request, timeout_duration)
+            .await;
+
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+
+        assert!(error_msg.contains("JavaScript execution timed out"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_success_within_timeout() {
+        let request_id = Uuid::new_v4();
+        let mut sandbox = Sandbox::new(request_id).expect("Failed to create sandbox");
+
+        let simple_code = r#"
+            export default function handler(request) {
+                return { status: 200, headers: {}, body: "Hello, World!" };
+            }
+        "#
+        .to_string();
+
+        let request = http::Request {
+            method: "GET".to_string(),
+            uri: "/".to_string(),
+            headers: HashMap::new(),
+            body: None,
+        };
+
+        let timeout_duration = Duration::from_secs(5);
+
+        let result = sandbox
+            .execute(simple_code, request, timeout_duration)
+            .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.status, 200);
+        assert_eq!(response.body, "Hello, World!");
     }
 }

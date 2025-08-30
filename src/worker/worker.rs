@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -81,7 +82,11 @@ impl Worker {
         };
 
         runtime
-            .execute(request.js_code, request.http_request)
+            .execute(
+                request.js_code,
+                request.http_request,
+                Duration::from_secs(10),
+            )
             .await
             .map_err(|e| format!("handler invocation failed: {}", e))
     }
