@@ -42,7 +42,5 @@ async function worker() {
 }
 
 const res = await worker();
-console.log(`Response Status: ${res.status}`);
-console.log(`Response Headers: ${JSON.stringify(res.headers)}`);
-console.log(`Response Body: ${res.body}`);
+console.log("Response", res);
 Func.response = res;
