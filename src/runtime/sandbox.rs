@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::LazyLock;
+use std::time::Duration;
 use uuid::Uuid;
 
 use super::ext;
@@ -58,28 +59,41 @@ impl Sandbox {
         &mut self,
         user_code: String,
         request: http::Request,
+        timeout_duration: Duration,
     ) -> Result<http::Response> {
-        let _ = self
-            .runtime
-            .load_side_es_module_from_code(&USER_MOD_SPECIFIER, user_code)
-            .await?;
-        let entrypoint_id = self
-            .runtime
-            .load_main_es_module_from_code(&WORKER_MOD_SPECIFIER, WORKER_CODE)
-            .await?;
+        let execution_result = tokio::time::timeout(timeout_duration, async {
+            let _ = self
+                .runtime
+                .load_side_es_module_from_code(&USER_MOD_SPECIFIER, user_code)
+                .await?;
+            let entrypoint_id = self
+                .runtime
+                .load_main_es_module_from_code(&WORKER_MOD_SPECIFIER, WORKER_CODE)
+                .await?;
 
-        self.state.borrow_mut().req = Some(request);
-        let result = self.runtime.mod_evaluate(entrypoint_id);
-        self.runtime.run_event_loop(Default::default()).await?;
-        result.await?;
+            self.state.borrow_mut().req = Some(request);
+            let result = self.runtime.mod_evaluate(entrypoint_id);
+            self.runtime.run_event_loop(Default::default()).await?;
+            result.await?;
+            Ok::<(), anyhow::Error>(())
+        })
+        .await;
 
-        let mut res: http::Response = self
-            .state
-            .borrow_mut()
-            .res
-            .take()
-            .ok_or_else(|| anyhow!("No response set in the runtime state"))?; // TODO: default to an OK response?
+        match execution_result {
+            Ok(Ok(())) => {
+                // completed
+            }
+            Ok(Err(e)) => {
+                // an error occurred
+                return Err(e);
+            }
+            Err(_) => {
+                // timeout occurred
+                return Err(anyhow!("JavaScript execution timed out"));
+            }
+        }
 
+        let mut res: http::Response = self.state.borrow_mut().res.take().unwrap_or_default();
         res.default_and_validate()?;
         res.set_runtime_headers(self.state.borrow().request_id);
 

@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+use super::pool::SupervisorMessage;
 use crate::runtime::{Sandbox, http};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,25 +20,28 @@ pub struct WorkerResponse {
 }
 
 pub struct Worker {
-    pub(crate) id: usize,
-    pub(crate) request_rx: mpsc::UnboundedReceiver<WorkerRequest>,
-    pub(crate) responder_tx: mpsc::UnboundedSender<WorkerResponse>,
+    pub id: usize,
+    pub request_rx: mpsc::UnboundedReceiver<WorkerRequest>,
+    pub responder_tx: mpsc::UnboundedSender<WorkerResponse>,
+    pub supervisor_tx: mpsc::UnboundedSender<SupervisorMessage>,
 }
 
 impl Worker {
-    pub(crate) fn new(
+    pub fn new(
         id: usize,
         request_rx: mpsc::UnboundedReceiver<WorkerRequest>,
         responder_tx: mpsc::UnboundedSender<WorkerResponse>,
+        supervisor_tx: mpsc::UnboundedSender<SupervisorMessage>,
     ) -> Self {
         Self {
             id,
             request_rx,
             responder_tx,
+            supervisor_tx,
         }
     }
 
-    pub(crate) async fn run(&mut self) {
+    pub async fn run(&mut self) {
         log::info!(worker_id = self.id; "Worker {} starting", self.id);
 
         while let Some(request) = self.request_rx.recv().await {
@@ -44,7 +49,7 @@ impl Worker {
             log::info!(
                 worker_id = self.id,
                 request_id:? = request_id;
-                "Worker accepted request"
+                "Worker {} accepted request", self.id
             );
 
             let result = self.process_request(request).await;
@@ -68,7 +73,10 @@ impl Worker {
     }
 
     async fn process_request(&self, request: WorkerRequest) -> Result<http::Response, String> {
-        let mut runtime = match Sandbox::new(request.id) {
+        // TODO: maybe this can be configurable for users depending on their 'trust' level
+        let timeout = Duration::from_secs(30);
+
+        let mut sandbox = match Sandbox::new(request.id) {
             Ok(rt) => rt,
             Err(e) => {
                 log::error!(
@@ -80,9 +88,27 @@ impl Worker {
             }
         };
 
-        runtime
-            .execute(request.js_code, request.http_request)
+        {
+            let handle = sandbox.runtime.v8_isolate().thread_safe_handle();
+            self.notify_supervisor(SupervisorMessage::Store(self.id, handle, timeout));
+        }
+
+        let result = sandbox
+            .execute(request.js_code, request.http_request, timeout)
             .await
-            .map_err(|e| format!("handler invocation failed: {}", e))
+            .map_err(|e| format!("handler invocation failed: {}", e));
+
+        self.notify_supervisor(SupervisorMessage::Release(self.id));
+        result
+    }
+
+    fn notify_supervisor(&self, msg: SupervisorMessage) {
+        if let Err(e) = self.supervisor_tx.send(msg) {
+            log::error!(
+                worker_id = self.id,
+                error:? = e;
+                "Failed to notify supervisor: {e}"
+            );
+        }
     }
 }
