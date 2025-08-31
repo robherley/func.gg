@@ -1,10 +1,11 @@
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function handler(req) {
-  console.log("Request:", req);
+  // console.log("Request:", req);
   const who = req.body ? JSON.parse(req.body).name : "World";
 
   await wait(20000);
+  // while (true) {}
 
   return {
     status: 200,
