@@ -12,7 +12,7 @@ pub struct Request {
     pub body: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Response {
     pub status: u16,
     pub headers: HashMap<String, String>,
