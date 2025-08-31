@@ -39,10 +39,7 @@ pub fn transpile(
         .map_err(|e| deno_error::JsErrorBox::generic(format!("Transpile error: {}", e)))?
         .into_source();
 
-    let src_map = match result.source_map {
-        Some(map) => Some(map.into_bytes().into()),
-        _ => None,
-    };
+    let src_map = result.source_map.map(|map| map.into_bytes().into());
 
     Ok((result.text.into(), src_map))
 }

@@ -8,10 +8,12 @@ use uuid::Uuid;
 use super::worker::{Worker, WorkerRequest, WorkerResponse};
 use crate::runtime::http;
 
+type PendingRequests = Arc<Mutex<HashMap<Uuid, oneshot::Sender<Result<http::Response, String>>>>>;
+
 pub struct Pool {
     worker_txs: Vec<mpsc::UnboundedSender<WorkerRequest>>,
     responder_rx: Arc<Mutex<mpsc::UnboundedReceiver<WorkerResponse>>>,
-    pending_requests: Arc<Mutex<HashMap<Uuid, oneshot::Sender<Result<http::Response, String>>>>>,
+    pending_requests: PendingRequests,
     current_worker_idx: Arc<Mutex<usize>>,
     pool_size: usize,
 }
@@ -104,7 +106,7 @@ impl Pool {
                 let mut pending = pending_requests.lock().await;
 
                 if let Some(sender) = pending.remove(&response.id) {
-                    if let Err(_) = sender.send(response.result) {
+                    if sender.send(response.result).is_err() {
                         log::warn!(request_id:? = response.id; "Failed to send response to waiting request");
                     }
                 } else {

@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::runtime;
-use crate::worker;
+use crate::workers;
 
-pub async fn invoke(State(pool): State<Arc<worker::Pool>>, request: Request) -> Response {
+pub async fn invoke(State(pool): State<Arc<workers::Pool>>, request: Request) -> Response {
     // TODO: temporary, eventually this should be served dynamically
     // possibly serve https://github.com/denoland/eszip
     let js_code = include_str!("../examples/basic.js");
@@ -68,6 +68,6 @@ pub async fn invoke(State(pool): State<Arc<worker::Pool>>, request: Request) -> 
     builder.body(Body::from(res.body)).unwrap()
 }
 
-pub fn build(pool: Arc<worker::Pool>) -> Router {
+pub fn build(pool: Arc<workers::Pool>) -> Router {
     Router::new().fallback(invoke).with_state(pool)
 }

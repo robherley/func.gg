@@ -1,6 +1,6 @@
 mod routes;
 mod runtime;
-mod worker;
+mod workers;
 
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
     info!("Creating worker pool with {} workers", pool_size);
-    let worker_pool = Arc::new(worker::Pool::new(pool_size));
+    let worker_pool = Arc::new(workers::Pool::new(pool_size));
 
     let app = routes::build(worker_pool).layer(
         TraceLayer::new_for_http()
