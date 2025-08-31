@@ -45,9 +45,7 @@ impl FetchPermissions for Permissions {
                         Ok(addrs) => {
                             for addr in addrs {
                                 log::info!("resolved {} to {}", domain, addr);
-                                if let Err(err) = check_addr(addr.ip(), api_name) {
-                                    return Err(err);
-                                }
+                                check_addr(addr.ip(), api_name)?;
                             }
                         }
                         Err(err) => {

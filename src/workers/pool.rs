@@ -12,6 +12,8 @@ use uuid::Uuid;
 use super::worker::{Worker, WorkerRequest, WorkerResponse};
 use crate::runtime::http;
 
+type PendingRequests = HashMap<Uuid, oneshot::Sender<Result<http::Response, String>>>;
+
 #[derive(Debug)]
 pub enum SupervisorMessage {
     Store(usize, IsolateHandle, Duration),
@@ -32,7 +34,7 @@ pub struct Pool {
     // Receiver for worker events
     supervisor_rx: Arc<Mutex<mpsc::UnboundedReceiver<SupervisorMessage>>>,
     // Requests waiting for workers to do work
-    pending_requests: Arc<Mutex<HashMap<Uuid, oneshot::Sender<Result<http::Response, String>>>>>,
+    pending_requests: Arc<Mutex<PendingRequests>>,
     // Active workers with attributes and isolate reference
     current_workers: Arc<Mutex<HashMap<usize, WorkingWorker>>>,
     // The size of the worker pool
@@ -187,8 +189,8 @@ impl Pool {
             while let Some(response) = receiver.recv().await {
                 let mut pending = pending_requests.lock().await;
                 if let Some(sender) = pending.remove(&response.id) {
-                    if let Err(Err(err)) = sender.send(response.result) {
-                        log::warn!(request_id:? = response.id; "Failed to send response to waiting request: {}", err);
+                    if sender.send(response.result).is_err() {
+                        log::warn!(request_id:? = response.id; "Failed to send response to waiting request");
                     }
                 } else {
                     log::warn!(request_id:? = response.id; "Received response for unknown request");
