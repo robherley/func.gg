@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 use deno_core::url::Url;
-use deno_core::{JsRuntime, RuntimeOptions};
+use deno_core::{JsRuntime, RuntimeOptions, v8};
 use rustls::crypto::{CryptoProvider, aws_lc_rs};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -12,6 +12,8 @@ use uuid::Uuid;
 use super::ext;
 use super::http;
 use super::loader;
+
+static HEAP_LIMIT: usize = 64 * 1024 * 1024; // 64MB
 
 static WORKER_CODE: &str = include_str!("./js/worker.js");
 static WORKER_MOD_SPECIFIER: LazyLock<Url> =
@@ -42,13 +44,29 @@ impl Sandbox {
         }));
 
         let extension_transpiler = Rc::new(loader::transpile);
+        let create_params = v8::CreateParams::default().heap_limits(0, HEAP_LIMIT);
 
         // TODO: snapshotting???
-        let runtime = JsRuntime::try_new(RuntimeOptions {
+        let mut runtime = JsRuntime::try_new(RuntimeOptions {
             extensions: ext::extensions(),
             extension_transpiler: Some(extension_transpiler),
+            create_params: Some(create_params),
             ..Default::default()
         })?;
+
+        let handle = runtime.v8_isolate().thread_safe_handle();
+        runtime.add_near_heap_limit_callback(move |heap_size, _| {
+            log::warn!(
+                "heap size exceeded ({}) for request {}, terminating...",
+                heap_size,
+                request_id.clone()
+            );
+
+            handle.terminate_execution();
+            // give it some extra room to clean up w/o crashing the runtime
+            // TODO: some way to notify that this request exceeded the heap limit
+            heap_size * 4
+        });
 
         runtime.op_state().borrow_mut().put(state.clone());
 

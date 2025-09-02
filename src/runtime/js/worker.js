@@ -29,7 +29,11 @@ async function worker() {
       throw new Error("invalid response");
     }
 
-    return res;
+    return {
+      status: res.status || 200,
+      headers: res.headers || {},
+      body: res.body || "",
+    };
   } catch (error) {
     const msg = error && error.message ? error.message : String(error);
     console.log(`Error: ${msg}`);
