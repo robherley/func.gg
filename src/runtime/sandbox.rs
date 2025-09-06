@@ -46,8 +46,10 @@ impl Sandbox {
         let extension_transpiler = Rc::new(loader::transpile);
         let create_params = v8::CreateParams::default().heap_limits(0, HEAP_LIMIT);
 
+        let mod_loader = Rc::new(loader::ModuleLoader::new());
         // TODO: snapshotting???
         let mut runtime = JsRuntime::try_new(RuntimeOptions {
+            module_loader: Some(mod_loader),
             extensions: ext::extensions(),
             extension_transpiler: Some(extension_transpiler),
             create_params: Some(create_params),

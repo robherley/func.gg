@@ -1,24 +1,68 @@
 use deno_ast::{MediaType, ParseParams};
-use deno_core::{ModuleCodeString, ModuleName, ModuleSpecifier, SourceMapData};
+use deno_core::{
+    ModuleCodeString, ModuleLoadResponse, ModuleName, ModuleSpecifier, SourceMapData,
+    error::ModuleLoaderError,
+};
 use deno_error::JsErrorBox;
+
+pub struct ModuleLoader;
+
+impl ModuleLoader {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl deno_core::ModuleLoader for ModuleLoader {
+    fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _kind: deno_core::ResolutionKind,
+    ) -> Result<ModuleSpecifier, deno_core::error::ModuleLoaderError> {
+        // https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
+        deno_core::resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+    }
+
+    fn load(
+        &self,
+        module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<&ModuleSpecifier>,
+        _is_dynamic: bool,
+        _requested_module_type: deno_core::RequestedModuleType,
+    ) -> deno_core::ModuleLoadResponse {
+        log::error!("attempting to load module: {}", module_specifier);
+        ModuleLoadResponse::Sync(Err(ModuleLoaderError::generic(
+            "module loading is not supported",
+        )))
+    }
+}
 
 pub fn transpile(
     mod_name: ModuleName,
     code: ModuleCodeString,
 ) -> Result<(ModuleCodeString, Option<SourceMapData>), JsErrorBox> {
-    // TODO(robherley): naive, clean up later
-    let media_type = match &mod_name {
-        m if m.ends_with(".ts") => MediaType::TypeScript,
-        m if m.ends_with(".js") => MediaType::JavaScript,
-        m => panic!("unknown media type for module: {}", m),
+    let media_type = MediaType::from_filename(&mod_name);
+
+    // alt: see #is_jsx and #is_typed
+    let needs_transpilation = match media_type {
+        MediaType::JavaScript => false,
+        MediaType::Jsx => true,
+        MediaType::TypeScript => true,
+        MediaType::Tsx => true,
+        _ => {
+            return Result::Err(JsErrorBox::generic(format!(
+                "media type '{}' not supported",
+                media_type
+            )));
+        }
     };
 
-    if media_type == MediaType::JavaScript {
+    if !needs_transpilation {
         return Ok((code, None));
     }
 
-    let specifier = ModuleSpecifier::parse(&mod_name)
-        .map_err(|e| deno_error::JsErrorBox::generic(format!("bad mod specifier: {}", e)))?;
+    let specifier = ModuleSpecifier::parse(&mod_name).map_err(JsErrorBox::from_err)?;
 
     let parsed = deno_ast::parse_module(ParseParams {
         specifier,
@@ -28,7 +72,7 @@ pub fn transpile(
         scope_analysis: false,
         maybe_syntax: None,
     })
-    .map_err(|e| deno_error::JsErrorBox::generic(format!("parse error: {}", e)))?;
+    .map_err(JsErrorBox::from_err)?;
 
     let result = parsed
         .transpile(
@@ -36,10 +80,11 @@ pub fn transpile(
             &Default::default(),
             &Default::default(),
         )
-        .map_err(|e| deno_error::JsErrorBox::generic(format!("Transpile error: {}", e)))?
+        .map_err(JsErrorBox::from_err)?
         .into_source();
 
-    let src_map = result.source_map.map(|map| map.into_bytes().into());
-
-    Ok((result.text.into(), src_map))
+    Ok((
+        result.text.into(),
+        result.source_map.map(|srcmap| srcmap.into_bytes().into()),
+    ))
 }

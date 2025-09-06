@@ -14,7 +14,7 @@ use crate::workers;
 pub async fn invoke(State(pool): State<Arc<workers::Pool>>, request: Request) -> Response {
     // TODO: temporary, eventually this should be served dynamically
     // possibly serve https://github.com/denoland/eszip
-    let js_code = include_str!("../examples/big_heap.js");
+    let js_code = include_str!("../examples/basic.js");
 
     let method = request.method().to_string();
     let uri = request.uri().to_string();
