@@ -53,6 +53,7 @@ impl Sandbox {
             extensions: ext::extensions(),
             extension_transpiler: Some(extension_transpiler),
             create_params: Some(create_params),
+            // startup_snapshot: Some(snapshot::RUNTIME_SNAPSHOT),
             ..Default::default()
         })?;
 
