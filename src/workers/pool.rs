@@ -6,59 +6,94 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, mpsc, oneshot};
-use tokio::time::sleep;
+use tokio::time::{Instant, sleep};
 use uuid::Uuid;
 
-use super::worker::{Worker, WorkerRequest, WorkerResponse};
+use super::worker::{Worker, WorkerRequest};
 use crate::runtime::http;
 
 type PendingRequests = HashMap<Uuid, oneshot::Sender<Result<http::Response, String>>>;
 
-#[derive(Debug)]
-pub enum SupervisorMessage {
-    Store(usize, IsolateHandle, Duration),
-    Release(usize),
+pub enum StateChange {
+    Received(usize, Duration),
+    Initialized(usize),
+    Started(usize, IsolateHandle),
+    Finished(usize, Uuid, Result<http::Response, String>),
 }
 
-struct WorkingWorker {
-    id: usize,
-    handle: IsolateHandle,
-    deadline: tokio::time::Instant,
+impl std::fmt::Debug for StateChange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StateChange::Received(worker_id, _) => {
+                write!(f, "Received({})", worker_id)
+            }
+            StateChange::Initialized(worker_id) => {
+                write!(f, "Initialized({})", worker_id)
+            }
+            StateChange::Started(worker_id, _) => {
+                write!(f, "Started({})", worker_id)
+            }
+            StateChange::Finished(worker_id, _, _) => {
+                write!(f, "Finished({})", worker_id)
+            }
+        }
+    }
+}
+
+pub struct WorkerState {
+    deadline: Instant,
+    isolate: Option<IsolateHandle>,
+    timings: HashMap<String, Duration>,
+    last_checkpoint: Option<(String, Instant)>,
+}
+
+impl WorkerState {
+    pub fn new(deadline: Instant) -> Self {
+        Self {
+            deadline,
+            isolate: None,
+            timings: HashMap::new(),
+            last_checkpoint: None,
+        }
+    }
+
+    pub fn checkpoint(&mut self, name: &str) {
+        if let Some((chk_name, chk_time)) = self.last_checkpoint.take() {
+            self.timings
+                .insert(format!("{} to {}", chk_name, name), chk_time.elapsed());
+        }
+        self.last_checkpoint = Some((name.to_string(), Instant::now()));
+    }
 }
 
 pub struct Pool {
     // Senders for worker requests
     worker_txs: Vec<mpsc::UnboundedSender<WorkerRequest>>,
-    // Receiver for worker responses
-    responder_rx: Arc<Mutex<mpsc::UnboundedReceiver<WorkerResponse>>>,
     // Receiver for worker events
-    supervisor_rx: Arc<Mutex<mpsc::UnboundedReceiver<SupervisorMessage>>>,
+    supervisor_rx: Arc<Mutex<mpsc::UnboundedReceiver<StateChange>>>,
     // Requests waiting for workers to do work
     pending_requests: Arc<Mutex<PendingRequests>>,
     // Active workers with attributes and isolate reference
-    current_workers: Arc<Mutex<HashMap<usize, WorkingWorker>>>,
+    current_workers: Arc<Mutex<HashMap<usize, WorkerState>>>,
     // The size of the worker pool
     pool_size: usize,
 }
 
 impl Pool {
     pub fn new(pool_size: usize) -> Self {
-        let (responder_tx, responder_rx) = mpsc::unbounded_channel();
         let (supervisor_tx, supervisor_rx) = mpsc::unbounded_channel();
         let worker_txs = Vec::with_capacity(pool_size);
 
         let mut pool = Self {
             pool_size,
             worker_txs,
-            responder_rx: Arc::new(Mutex::new(responder_rx)),
             supervisor_rx: Arc::new(Mutex::new(supervisor_rx)),
             pending_requests: Arc::new(Mutex::new(HashMap::new())),
             current_workers: Arc::new(Mutex::new(HashMap::new())),
         };
 
-        pool.spawn_reciever();
         pool.spawn_supervisor();
-        pool.spawn_workers(responder_tx, supervisor_tx);
+        pool.spawn_workers(supervisor_tx);
         pool
     }
 
@@ -98,11 +133,7 @@ impl Pool {
         }
     }
 
-    fn spawn_workers(
-        &mut self,
-        responder_tx: mpsc::UnboundedSender<WorkerResponse>,
-        supervisor_tx: mpsc::UnboundedSender<SupervisorMessage>,
-    ) {
+    fn spawn_workers(&mut self, supervisor_tx: mpsc::UnboundedSender<StateChange>) {
         // https://docs.rs/deno_core/0.353.0/deno_core/struct.JsRuntime.html#method.init_platform
         JsRuntime::init_platform(Default::default(), false);
 
@@ -110,7 +141,6 @@ impl Pool {
             let (request_tx, request_rx) = mpsc::unbounded_channel();
             self.worker_txs.push(request_tx);
 
-            let responder_tx = responder_tx.clone();
             let supervisor_tx = supervisor_tx.clone();
 
             // each runtime needs its own thread, specifically with tokio's current thread runtime
@@ -120,7 +150,7 @@ impl Pool {
                     .build()
                     .unwrap();
                 rt.block_on(async {
-                    let mut worker = Worker::new(i, request_rx, responder_tx, supervisor_tx);
+                    let mut worker = Worker::new(i, request_rx, supervisor_tx);
                     worker.run().await;
                 });
             });
@@ -130,26 +160,47 @@ impl Pool {
     fn spawn_supervisor(&self) {
         let supervisor_rx = self.supervisor_rx.clone();
         let current_workers = self.current_workers.clone();
+        let pending_requests = self.pending_requests.clone();
         tokio::spawn(async move {
             let mut receiver = supervisor_rx.lock().await;
 
             loop {
                 tokio::select! {
-                    supervisor_msg = receiver.recv() => {
-                        match supervisor_msg {
-                            Some(SupervisorMessage::Store(worker_id, isolate_handle, duration)) => {
+                    msg = receiver.recv() => {
+                        log::info!("Supervisor received message: {:?}", msg);
+                        match msg {
+                            Some(StateChange::Received(worker_id, duration)) => {
                                 let mut current_workers = current_workers.lock().await;
-                                log::info!(worker_id = worker_id; "Supervisor received isolate handle");
-                                current_workers.insert(worker_id, WorkingWorker {
-                                    id: worker_id,
-                                    handle: isolate_handle,
-                                    deadline: tokio::time::Instant::now() + duration,
-                                });
+                                let mut worker = WorkerState::new(Instant::now() + duration);
+                                worker.checkpoint("recv");
+                                current_workers.insert(worker_id, worker);
                             }
-                            Some(SupervisorMessage::Release(worker_id)) => {
+                            Some(StateChange::Initialized(worker_id)) => {
                                 let mut current_workers = current_workers.lock().await;
-                                log::info!(worker_id = worker_id; "Supervisor received release message");
-                                _ = current_workers.remove(&worker_id)
+                                if let Some(worker) = current_workers.get_mut(&worker_id) {
+                                    worker.checkpoint("init");
+                                }
+                            }
+                            Some(StateChange::Started(worker_id, isolate_handle)) => {
+                                let mut current_workers = current_workers.lock().await;
+                                if let Some(worker) = current_workers.get_mut(&worker_id) {
+                                    worker.checkpoint("start");
+                                    worker.isolate = Some(isolate_handle);
+                                }
+                            }
+                            Some(StateChange::Finished(worker_id, request_id, response)) => {
+                                let mut current_workers = current_workers.lock().await;
+                                if let Some(mut worker) = current_workers.remove(&worker_id) {
+                                    worker.checkpoint("finish");
+                                    tmp_timings(worker_id, request_id, worker.timings);
+                                }
+
+                                let mut pending_requests = pending_requests.lock().await;
+                                if let Some(sender) = pending_requests.remove(&request_id) {
+                                    if sender.send(response).is_err() {
+                                        log::warn!(request_id:?; "Failed to send response to waiting request");
+                                    }
+                                }
                             }
                             None => {
                                 log::info!("Supervisor channel closed");
@@ -158,7 +209,7 @@ impl Pool {
                         }
                     }
 
-                    _ = sleep(Duration::from_millis(100)) => {
+                    _ = sleep(Duration::from_millis(200)) => {
                         let now = tokio::time::Instant::now();
                         let mut to_remove = Vec::new();
                         let mut current_workers = current_workers.lock().await;
@@ -171,29 +222,13 @@ impl Pool {
 
                         for worker_id in to_remove {
                             if let Some(worker) = current_workers.remove(&worker_id) {
-                                log::warn!(worker_id = worker.id; "Supervisor terminating isolate (worker_id={}) after deadline", worker.id);
-                                worker.handle.terminate_execution();
+                                log::warn!(worker_id; "Supervisor terminating isolate (worker_id={}) after deadline", worker_id);
+                                if let Some(isolate) = worker.isolate {
+                                    isolate.terminate_execution();
+                                }
                             }
                         }
                     }
-                }
-            }
-        });
-    }
-
-    fn spawn_reciever(&self) {
-        let responder_rx = self.responder_rx.clone();
-        let pending_requests = self.pending_requests.clone();
-        tokio::spawn(async move {
-            let mut receiver = responder_rx.lock().await;
-            while let Some(response) = receiver.recv().await {
-                let mut pending = pending_requests.lock().await;
-                if let Some(sender) = pending.remove(&response.id) {
-                    if sender.send(response.result).is_err() {
-                        log::warn!(request_id:? = response.id; "Failed to send response to waiting request");
-                    }
-                } else {
-                    log::warn!(request_id:? = response.id; "Received response for unknown request");
                 }
             }
         });
@@ -244,4 +279,8 @@ impl Pool {
             None => rand::rng().random_range(0..self.pool_size),
         }
     }
+}
+
+fn tmp_timings(id: usize, request_id: Uuid, timings: HashMap<String, Duration>) {
+    log::info!("worker {} on request {}: {:?}", id, request_id, timings);
 }
