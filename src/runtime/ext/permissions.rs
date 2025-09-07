@@ -34,7 +34,7 @@ impl FetchPermissions for Permissions {
                     return deny!(api_name, "fetch_net_url");
                 }
 
-                log::debug!("checking net for {:?} (api: {})", url, api_name);
+                tracing::debug!("checking net for {:?} (api: {})", url, api_name);
 
                 match host {
                     Host::Ipv4(addr) => return check_addr(addr.into(), api_name),
@@ -44,12 +44,12 @@ impl FetchPermissions for Permissions {
                     Host::Domain(domain) => match (domain, 80).to_socket_addrs() {
                         Ok(addrs) => {
                             for addr in addrs {
-                                log::info!("resolved {} to {}", domain, addr);
+                                tracing::info!("resolved {} to {}", domain, addr);
                                 check_addr(addr.ip(), api_name)?;
                             }
                         }
                         Err(err) => {
-                            log::error!("Failed to resolve domain {}: {}", domain, err);
+                                            tracing::error!("Failed to resolve domain {}: {}", domain, err);
                             return deny!(api_name, "fetch_net_url");
                         }
                     },

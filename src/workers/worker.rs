@@ -41,31 +41,26 @@ impl Worker {
     }
 
     pub async fn run(&mut self) {
-        log::info!(worker_id = self.id; "Worker {} starting", self.id);
+        tracing::info!("Worker starting");
 
         while let Some(request) = self.request_rx.recv().await {
-            self.notify(StateChange::Received(self.id, self.timeout));
             let request_id = request.id;
-            log::info!(
-                worker_id = self.id,
-                request_id:? = request.id;
-                "Worker {} accepted request", self.id
-            );
+            self.notify(StateChange::Received(self.id, self.timeout));
+            tracing::info!("Worker accepted request");
 
             let result = self.process_request(request).await;
             self.notify(StateChange::Finished(self.id, request_id, result));
         }
 
-        log::info!(worker_id = self.id; "Worker shutting down");
+        tracing::info!("Worker shutting down");
     }
 
     async fn process_request(&self, request: WorkerRequest) -> Result<http::Response, String> {
         let mut sandbox = match Sandbox::new(request.id) {
             Ok(rt) => rt,
             Err(e) => {
-                log::error!(
-                    worker_id = self.id,
-                    error:? = e;
+                tracing::error!(
+                    error = %e,
                     "Failed to create JavaScript runtime"
                 );
                 return Err(format!("unable to create runtime: {}", e));
@@ -84,9 +79,8 @@ impl Worker {
 
     fn notify(&self, msg: StateChange) {
         if let Err(e) = self.supervisor_tx.send(msg) {
-            log::error!(
-                worker_id = self.id,
-                error:? = e;
+            tracing::error!(
+                error = %e,
                 "Failed to notify supervisor: {e}"
             );
         }

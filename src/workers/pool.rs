@@ -114,9 +114,9 @@ impl Pool {
 
         self.insert_pending(request_id, response_tx).await;
 
-        log::debug!(
-            request_id:? = request_id,
-            worker_idx = worker_idx;
+        tracing::debug!(
+            request_id = ?request_id,
+            worker_idx = worker_idx,
             "Dispatching request to worker"
         );
 
@@ -145,6 +145,7 @@ impl Pool {
 
             // each runtime needs its own thread, specifically with tokio's current thread runtime
             std::thread::spawn(move || {
+                let _span = tracing::info_span!("worker", id = i).entered();
                 let rt = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
@@ -167,7 +168,7 @@ impl Pool {
             loop {
                 tokio::select! {
                     msg = receiver.recv() => {
-                        log::info!("Supervisor received message: {:?}", msg);
+                        tracing::info!("Supervisor received message: {:?}", msg);
                         match msg {
                             Some(StateChange::Received(worker_id, duration)) => {
                                 let mut current_workers = current_workers.lock().await;
@@ -197,11 +198,11 @@ impl Pool {
 
                                 let mut pending_requests = pending_requests.lock().await;
                                 if let Some(sender) = pending_requests.remove(&request_id) && sender.send(response).is_err() {
-                                    log::warn!(request_id:?; "Failed to send response to waiting request");
+                                    tracing::warn!(request_id = ?request_id, "Failed to send response to waiting request");
                                 }
                             }
                             None => {
-                                log::info!("Supervisor channel closed");
+                                tracing::info!("Supervisor channel closed");
                                 break;
                             }
                         }
@@ -220,7 +221,7 @@ impl Pool {
 
                         for worker_id in to_remove {
                             if let Some(worker) = current_workers.remove(&worker_id) {
-                                log::warn!(worker_id; "Supervisor terminating isolate (worker_id={}) after deadline", worker_id);
+                                tracing::warn!(worker_id = worker_id, "Supervisor terminating isolate after deadline");
                                 if let Some(isolate) = worker.isolate {
                                     isolate.terminate_execution();
                                 }
@@ -242,9 +243,9 @@ impl Pool {
 
         if pending.len() >= self.pool_size {
             // our throughput sucks?
-            log::warn!(
+            tracing::warn!(
                 pending_requests = pending.len() + 1,
-                available_workers = self.pool_size;
+                available_workers = self.pool_size,
                 "queue backup detected: more pending than available"
             );
         }
@@ -280,5 +281,5 @@ impl Pool {
 }
 
 fn tmp_timings(id: usize, request_id: Uuid, timings: HashMap<String, Duration>) {
-    log::info!("worker {} on request {}: {:?}", id, request_id, timings);
+    tracing::info!("worker {} on request {}: {:?}", id, request_id, timings);
 }

@@ -33,14 +33,14 @@ pub async fn invoke(State(pool): State<Arc<workers::Pool>>, request: Request) ->
                 match String::from_utf8(bytes.to_vec()) {
                     Ok(body_string) => Some(body_string),
                     Err(_) => {
-                        log::warn!("request body contains invalid UTF-8, treating as empty");
+                        tracing::warn!("request body contains invalid UTF-8, treating as empty");
                         None
                     }
                 }
             }
         }
         Err(e) => {
-            log::error!("failed to read request body: {}", e);
+            tracing::error!("failed to read request body: {}", e);
             return (StatusCode::BAD_REQUEST, "Unable to read request body").into_response();
         }
     };
@@ -55,7 +55,7 @@ pub async fn invoke(State(pool): State<Arc<workers::Pool>>, request: Request) ->
     let res = match pool.handle(js_code.to_string(), req).await {
         Ok(r) => r,
         Err(e) => {
-            log::error!("Handler invocation failed: {}", e);
+            tracing::error!("Handler invocation failed: {}", e);
             return (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response();
         }
     };
