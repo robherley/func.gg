@@ -31,7 +31,7 @@ impl deno_core::ModuleLoader for ModuleLoader {
         _is_dynamic: bool,
         _requested_module_type: deno_core::RequestedModuleType,
     ) -> deno_core::ModuleLoadResponse {
-        log::error!("attempting to load module: {}", module_specifier);
+        tracing::error!("attempting to load module: {}", module_specifier);
         ModuleLoadResponse::Sync(Err(ModuleLoaderError::generic(
             "module loading is not supported",
         )))

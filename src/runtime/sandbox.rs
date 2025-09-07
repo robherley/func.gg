@@ -58,11 +58,7 @@ impl Sandbox {
 
         let handle = runtime.v8_isolate().thread_safe_handle();
         runtime.add_near_heap_limit_callback(move |heap_size, _| {
-            log::warn!(
-                "heap size exceeded ({}) for request {}, terminating...",
-                heap_size,
-                request_id.clone()
-            );
+            tracing::warn!("heap size exceeded ({}), terminating...", heap_size);
 
             handle.terminate_execution();
             // give it some extra room to clean up w/o crashing the runtime
