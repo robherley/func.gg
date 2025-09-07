@@ -196,10 +196,8 @@ impl Pool {
                                 }
 
                                 let mut pending_requests = pending_requests.lock().await;
-                                if let Some(sender) = pending_requests.remove(&request_id) {
-                                    if sender.send(response).is_err() {
-                                        log::warn!(request_id:?; "Failed to send response to waiting request");
-                                    }
+                                if let Some(sender) = pending_requests.remove(&request_id) && sender.send(response).is_err() {
+                                    log::warn!(request_id:?; "Failed to send response to waiting request");
                                 }
                             }
                             None => {

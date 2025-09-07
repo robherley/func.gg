@@ -76,12 +76,10 @@ impl Worker {
         let handle = sandbox.runtime.v8_isolate().thread_safe_handle();
         self.notify(StateChange::Started(self.id, handle));
 
-        let result = sandbox
+        sandbox
             .execute(request.js_code, request.http_request, self.timeout)
             .await
-            .map_err(|e| format!("handler invocation failed: {}", e));
-
-        result
+            .map_err(|e| format!("handler invocation failed: {}", e))
     }
 
     fn notify(&self, msg: StateChange) {
