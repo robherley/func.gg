@@ -6,6 +6,8 @@ use uuid::Uuid;
 use super::pool::StateChange;
 use funcgg_runtime::{Sandbox, http};
 
+static STARTUP_SNAPSHOT: &[u8] = include_bytes!(env!("SNAPSHOT_PATH"));
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkerRequest {
     pub id: Uuid,
@@ -56,7 +58,7 @@ impl Worker {
     }
 
     async fn process_request(&self, request: WorkerRequest) -> Result<http::Response, String> {
-        let mut sandbox = match Sandbox::new(request.id) {
+        let mut sandbox = match Sandbox::new(request.id, Some(STARTUP_SNAPSHOT)) {
             Ok(rt) => rt,
             Err(e) => {
                 tracing::error!(
