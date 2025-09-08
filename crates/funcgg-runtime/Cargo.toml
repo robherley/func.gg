@@ -6,7 +6,7 @@ license.workspace = true
 version.workspace = true
 
 [lib]
-path = "lib.rs"
+path = "src/lib.rs"
 
 [dependencies]
 anyhow = { workspace = true }
