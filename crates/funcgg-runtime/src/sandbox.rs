@@ -35,7 +35,7 @@ pub struct Sandbox {
 }
 
 impl Sandbox {
-    pub fn new(request_id: Uuid) -> Result<Self> {
+    pub fn new(request_id: Uuid, startup_snapshot: Option<&'static [u8]>) -> Result<Self> {
         _ = CryptoProvider::install_default(aws_lc_rs::default_provider());
 
         let state = Rc::new(RefCell::new(State {
@@ -47,12 +47,12 @@ impl Sandbox {
         let create_params = v8::CreateParams::default().heap_limits(0, HEAP_LIMIT);
 
         let mod_loader = Rc::new(loader::ModuleLoader::new());
-        // TODO: snapshotting???
         let mut runtime = JsRuntime::try_new(RuntimeOptions {
             module_loader: Some(mod_loader),
             extensions: ext::extensions(),
             extension_transpiler: Some(extension_transpiler),
             create_params: Some(create_params),
+            startup_snapshot,
             ..Default::default()
         })?;
 
