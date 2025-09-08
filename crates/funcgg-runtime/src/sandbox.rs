@@ -15,7 +15,7 @@ use super::loader;
 
 static HEAP_LIMIT: usize = 64 * 1024 * 1024; // 64MB
 
-static WORKER_CODE: &str = include_str!("./js/worker.js");
+static WORKER_CODE: &str = include_str!("./js/entrypoint.js");
 static WORKER_MOD_SPECIFIER: LazyLock<Url> =
     LazyLock::new(|| "func:worker".parse().expect("bad module specifier"));
 

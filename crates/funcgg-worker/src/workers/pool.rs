@@ -10,7 +10,7 @@ use tokio::time::{Instant, sleep};
 use uuid::Uuid;
 
 use super::worker::{Worker, WorkerRequest};
-use crate::runtime::http;
+use funcgg_runtime::http;
 
 type PendingRequests = HashMap<Uuid, oneshot::Sender<Result<http::Response, String>>>;
 

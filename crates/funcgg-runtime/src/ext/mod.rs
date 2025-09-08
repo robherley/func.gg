@@ -20,7 +20,7 @@ deno_core::extension!(
     ops = [op_get_request, op_set_response, op_get_request_id, op_tls_peer_certificate],
     esm_entry_point = "ext:funcgg_runtime/funcgg_entrypoint.js",
     esm = [
-        dir "src/runtime/ext",
+        dir "src/ext",
         "deno_webidl.js",
         "deno_console.js",
         "deno_url.js",
