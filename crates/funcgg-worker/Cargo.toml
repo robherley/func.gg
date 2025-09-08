@@ -1,7 +1,9 @@
 [package]
 name = "funcgg-worker"
-version = "0.1.0"
-edition = "2024"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+version.workspace = true
 
 [[bin]]
 name = "funcgg-worker"
