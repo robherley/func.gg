@@ -11,6 +11,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("cargo:rerun-if-changed={}", file.display());
     }
 
-    std::fs::write(out_dir.join("FUNCGG_RUNTIME_SNAPSHOT.bin"), snapshot.output)?;
+    let snapshot_path = out_dir.join(funcgg_runtime::snapshot::FILE_NAME);
+    std::fs::write(snapshot_path.clone(), snapshot.output)?;
+    println!("cargo:rustc-env=SNAPSHOT_PATH={}", snapshot_path.display());
     Ok(())
 }

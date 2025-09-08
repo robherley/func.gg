@@ -6,8 +6,7 @@ use uuid::Uuid;
 use super::pool::StateChange;
 use funcgg_runtime::{Sandbox, http};
 
-static STARTUP_SNAPSHOT: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/FUNCGG_RUNTIME_SNAPSHOT.bin"));
+static STARTUP_SNAPSHOT: &[u8] = include_bytes!(env!("SNAPSHOT_PATH"));
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkerRequest {
