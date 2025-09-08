@@ -1,9 +1,11 @@
-[package]
-name = "funcgg"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = [
+    "crates/funcgg-runtime",
+    "crates/funcgg-worker",
+]
+resolver = "2"
 
-[dependencies]
+[workspace.dependencies]
 anyhow = "1.0.94"
 axum = { version = "0.8", features = ["macros"] }
 deno_ast = { version = "0.50.0", features = ["transpiling"] }

@@ -1,4 +1,4 @@
-use crate::runtime::loader;
+use crate::loader;
 
 use super::ext;
 use std::env;

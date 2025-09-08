@@ -8,7 +8,6 @@ use axum::{
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::runtime;
 use crate::workers;
 
 pub async fn invoke(State(pool): State<Arc<workers::Pool>>, request: Request) -> Response {
@@ -45,7 +44,7 @@ pub async fn invoke(State(pool): State<Arc<workers::Pool>>, request: Request) ->
         }
     };
 
-    let req = runtime::http::Request {
+    let req = funcgg_runtime::http::Request {
         method,
         uri,
         headers,
