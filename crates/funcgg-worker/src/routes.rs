@@ -1,16 +1,18 @@
 use axum::{
     Router,
-    body::{Body, to_bytes},
+    body::Body,
     extract::{Request, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use deno_core::futures::StreamExt;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
-use crate::workers;
+use crate::pool::Pool;
 
-pub async fn invoke(State(pool): State<Arc<workers::Pool>>, request: Request) -> Response {
+pub async fn invoke(State(pool): State<Arc<Pool>>, request: Request) -> Response {
     // TODO: temporary, eventually this should be served dynamically
     // possibly serve https://github.com/denoland/eszip
     let js_code = include_str!("../examples/basic.js");
@@ -21,37 +23,36 @@ pub async fn invoke(State(pool): State<Arc<workers::Pool>>, request: Request) ->
         .headers()
         .iter()
         .map(|(name, value)| (name.to_string(), value.to_str().unwrap_or("").to_string()))
-        .collect::<HashMap<String, String>>(); // TODO: any nonsense we should filter out?
+        .collect::<HashMap<String, String>>();
 
-    // TODO: this should be streamed on both ends, as raw bytes not utf-8
-    let body = match to_bytes(request.into_body(), 1024 * 1024).await {
-        Ok(bytes) => {
-            if bytes.is_empty() {
-                None
-            } else {
-                match String::from_utf8(bytes.to_vec()) {
-                    Ok(body_string) => Some(body_string),
-                    Err(_) => {
-                        tracing::warn!("request body contains invalid UTF-8, treating as empty");
-                        None
-                    }
-                }
+    let _content_length = headers
+        .get("content-length")
+        .and_then(|cl| cl.parse::<usize>().ok())
+        .unwrap_or(0);
+
+    // TODO: do we want to always stream?
+    // let use_streaming = content_length > 64 * 1024; // Stream if > 64KB
+
+    let mut stream = request.into_body().into_data_stream();
+
+    let (body_tx, body_rx) = mpsc::channel(1);
+
+    tokio::spawn(async move {
+        while let Some(chunk) = stream.next().await {
+            let result = chunk.map_err(|err| format!("unable to read request body: {}", err));
+            if body_tx.send(result).await.is_err() {
+                break;
             }
         }
-        Err(e) => {
-            tracing::error!("failed to read request body: {}", e);
-            return (StatusCode::BAD_REQUEST, "Unable to read request body").into_response();
-        }
-    };
+    });
 
     let req = funcgg_runtime::http::Request {
         method,
         uri,
         headers,
-        body,
     };
 
-    let res = match pool.handle(js_code.to_string(), req).await {
+    let res = match pool.handle(js_code.to_string(), req, body_rx).await {
         Ok(r) => r,
         Err(e) => {
             tracing::error!("Handler invocation failed: {}", e);
@@ -67,6 +68,6 @@ pub async fn invoke(State(pool): State<Arc<workers::Pool>>, request: Request) ->
     builder.body(Body::from(res.body)).unwrap()
 }
 
-pub fn build(pool: Arc<workers::Pool>) -> Router {
+pub fn build(pool: Arc<Pool>) -> Router {
     Router::new().fallback(invoke).with_state(pool)
 }

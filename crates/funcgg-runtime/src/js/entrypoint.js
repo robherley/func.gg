@@ -29,6 +29,16 @@ async function worker() {
       throw new Error("invalid response");
     }
 
+    // // Handle streaming response
+    // if (res.bodyStream && res.bodyStream instanceof Func.ResponseStream) {
+    //   return {
+    //     status: res.status || 200,
+    //     headers: res.headers || {},
+    //     body: "", // Empty for streaming
+    //     body_stream: res.bodyStream.streamId,
+    //   };
+    // }
+
     return {
       status: res.status || 200,
       headers: res.headers || {},

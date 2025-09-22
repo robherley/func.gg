@@ -8,6 +8,7 @@ use deno_web::deno_web;
 use deno_webidl::deno_webidl;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::vec;
 
 use super::http;
 use super::sandbox::State;
@@ -17,7 +18,13 @@ use permissions::Permissions;
 
 deno_core::extension!(
     funcgg_runtime,
-    ops = [op_get_request, op_set_response, op_get_request_id, op_tls_peer_certificate],
+    ops = [
+        op_get_request,
+        op_set_response,
+        op_get_request_id,
+        op_tls_peer_certificate,
+        op_read_request_chunk,
+    ],
     esm_entry_point = "ext:funcgg_runtime/funcgg_entrypoint.js",
     esm = [
         dir "src/ext",
@@ -56,15 +63,22 @@ fn get_mut(op_state: &mut OpState) -> std::cell::RefMut<'_, State> {
     st.borrow_mut()
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum JsError {
+    #[class(type)]
+    #[error("an internal error occurred: {0}")]
+    Generic(String),
+}
+
 #[op2]
 #[serde]
 fn op_get_request(state: &mut OpState) -> Option<http::Request> {
-    get(state).req.clone()
+    get(state).req.clone().map(|req| req.into())
 }
 
 #[op2]
 fn op_set_response(state: &mut OpState, #[serde] res: http::Response) {
-    get_mut(state).res = Some(res);
+    get_mut(state).res = Some(res.into());
 }
 
 #[op2]
@@ -73,7 +87,7 @@ fn op_get_request_id(state: &mut OpState) -> String {
     get(state).request_id.to_string()
 }
 
-#[deno_core::op2]
+#[op2]
 #[serde]
 pub fn op_tls_peer_certificate(#[smi] _: u32, _: bool) -> Option<deno_core::serde_json::Value> {
     // For now, we won't support TLS peer certificate, so we return None.
@@ -82,4 +96,22 @@ pub fn op_tls_peer_certificate(#[smi] _: u32, _: bool) -> Option<deno_core::serd
     // Unfortunately, this is required part of the tls implementation used by fetch.
     // https://github.com/denoland/deno/blob/daa412b0f2898a1c1e2184a6cb72b69f5806d6a5/ext/net/02_tls.js#L47-L49
     None
+}
+
+#[op2(async)]
+#[buffer]
+async fn op_read_request_chunk(state: Rc<RefCell<OpState>>) -> Result<Vec<u8>, JsError> {
+    let chunk = state
+        .borrow()
+        .borrow::<Rc<RefCell<super::sandbox::State>>>()
+        .borrow_mut()
+        .incoming_body_rx
+        .recv()
+        .await;
+
+    match chunk {
+        Some(Ok(chunk)) => Ok(chunk.into()),
+        Some(Err(err)) => Err(JsError::Generic(err)),
+        None => Ok(vec![]),
+    }
 }

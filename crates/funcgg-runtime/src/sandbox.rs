@@ -2,11 +2,11 @@ use anyhow::{Result, anyhow};
 use deno_core::url::Url;
 use deno_core::{JsRuntime, RuntimeOptions, v8};
 use rustls::crypto::{CryptoProvider, aws_lc_rs};
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::LazyLock;
 use std::time::Duration;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use super::ext;
@@ -22,11 +22,11 @@ static WORKER_MOD_SPECIFIER: LazyLock<Url> =
 static USER_MOD_SPECIFIER: LazyLock<Url> =
     LazyLock::new(|| "func:user-code".parse().expect("bad module specifier"));
 
-#[derive(Default, Serialize, Deserialize)]
 pub struct State {
     pub req: Option<http::Request>,
     pub res: Option<http::Response>,
     pub request_id: Uuid,
+    pub incoming_body_rx: mpsc::Receiver<Result<bytes::Bytes, String>>,
 }
 
 pub struct Sandbox {
@@ -35,12 +35,18 @@ pub struct Sandbox {
 }
 
 impl Sandbox {
-    pub fn new(request_id: Uuid, startup_snapshot: Option<&'static [u8]>) -> Result<Self> {
+    pub fn new(
+        request_id: Uuid,
+        startup_snapshot: Option<&'static [u8]>,
+        incoming_body_rx: mpsc::Receiver<Result<bytes::Bytes, String>>,
+    ) -> Result<Self> {
         _ = CryptoProvider::install_default(aws_lc_rs::default_provider());
 
         let state = Rc::new(RefCell::new(State {
             request_id,
-            ..Default::default()
+            req: None,
+            res: None,
+            incoming_body_rx,
         }));
 
         let extension_transpiler = Rc::new(loader::transpile);

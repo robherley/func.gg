@@ -10,6 +10,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = { workspace = true }
+bytes = { workspace = true }
 deno_ast = { workspace = true }
 deno_console = { workspace = true }
 deno_core = { workspace = true }
@@ -26,6 +27,7 @@ rustls = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_v8 = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }

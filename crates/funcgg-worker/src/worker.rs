@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -8,17 +7,12 @@ use funcgg_runtime::{Sandbox, http};
 
 static STARTUP_SNAPSHOT: &[u8] = include_bytes!(env!("SNAPSHOT_PATH"));
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct WorkerRequest {
     pub id: Uuid,
     pub js_code: String,
     pub http_request: http::Request,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkerResponse {
-    pub id: Uuid,
-    pub result: Result<http::Response, String>,
+    pub incoming_body_rx: mpsc::Receiver<Result<bytes::Bytes, String>>,
 }
 
 pub struct Worker {
@@ -58,25 +52,28 @@ impl Worker {
     }
 
     async fn process_request(&self, request: WorkerRequest) -> Result<http::Response, String> {
-        let mut sandbox = match Sandbox::new(request.id, Some(STARTUP_SNAPSHOT)) {
-            Ok(rt) => rt,
-            Err(e) => {
-                tracing::error!(
-                    error = %e,
-                    "Failed to create JavaScript runtime"
-                );
-                return Err(format!("unable to create runtime: {}", e));
-            }
-        };
+        let mut sandbox =
+            match Sandbox::new(request.id, Some(STARTUP_SNAPSHOT), request.incoming_body_rx) {
+                Ok(rt) => rt,
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        "Failed to create JavaScript runtime"
+                    );
+                    return Err(format!("unable to create runtime: {}", e));
+                }
+            };
         self.notify(StateChange::Initialized(self.id));
 
         let handle = sandbox.runtime.v8_isolate().thread_safe_handle();
         self.notify(StateChange::Started(self.id, handle));
 
-        sandbox
+        let response = sandbox
             .execute(request.js_code, request.http_request, self.timeout)
             .await
-            .map_err(|e| format!("handler invocation failed: {}", e))
+            .map_err(|e| format!("handler invocation failed: {}", e))?;
+
+        Ok(response)
     }
 
     fn notify(&self, msg: StateChange) {
