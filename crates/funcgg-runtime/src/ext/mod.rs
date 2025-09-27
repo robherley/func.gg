@@ -73,12 +73,12 @@ pub enum JsError {
 #[op2]
 #[serde]
 fn op_get_request(state: &mut OpState) -> Option<http::Request> {
-    get(state).req.clone().map(|req| req.into())
+    get(state).req.clone()
 }
 
 #[op2]
 fn op_set_response(state: &mut OpState, #[serde] res: http::Response) {
-    get_mut(state).res = Some(res.into());
+    get_mut(state).res = Some(res);
 }
 
 #[op2]
