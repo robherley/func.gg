@@ -77,10 +77,12 @@ pub struct Pool {
     current_workers: Arc<Mutex<HashMap<usize, WorkerState>>>,
     // The size of the worker pool
     pool_size: usize,
+    // The address of the worker pool
+    pub addr: String,
 }
 
 impl Pool {
-    pub fn new(pool_size: usize) -> Self {
+    pub fn new(pool_size: usize, addr: String) -> Self {
         let (supervisor_tx, supervisor_rx) = mpsc::unbounded_channel();
         let worker_txs = Vec::with_capacity(pool_size);
 
@@ -90,6 +92,7 @@ impl Pool {
             supervisor_rx: Arc::new(Mutex::new(supervisor_rx)),
             pending_requests: Arc::new(Mutex::new(HashMap::new())),
             current_workers: Arc::new(Mutex::new(HashMap::new())),
+            addr,
         };
 
         pool.spawn_supervisor();

@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
     info!("Creating worker pool with {} workers", pool_size);
-    let worker_pool = Arc::new(pool::Pool::new(pool_size));
+    let worker_pool = Arc::new(pool::Pool::new(pool_size, addr.clone()));
 
     let app = routes::build(worker_pool).layer(
         TraceLayer::new_for_http()

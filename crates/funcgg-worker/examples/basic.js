@@ -1,18 +1,9 @@
-const readChunk = async () => Deno.core.ops.op_read_request_chunk();
-
 export async function handler(req) {
-  const who = req.body ? JSON.parse(req.body).name : "World";
-
-  let idx = 0;
-  while (true) {
-    const chunk = await readChunk();
-    console.log(idx, chunk.length);
-
-    idx++;
-    if (chunk.length === 0) {
-      break;
-    }
-  }
+  console.log("[req]", req);
+  try {
+    const body = await req.json();
+    console.log("[body]", body);
+  } catch {}
 
   return {
     status: 200,
@@ -21,7 +12,7 @@ export async function handler(req) {
       "X-Foo": "bar",
     },
     body: JSON.stringify({
-      msg: `Hello ${who} from the worker!`,
+      msg: `Hello from the worker!`,
     }),
   };
 }

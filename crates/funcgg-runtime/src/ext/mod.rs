@@ -67,7 +67,7 @@ fn get_mut(op_state: &mut OpState) -> std::cell::RefMut<'_, State> {
 pub enum JsError {
     #[class(type)]
     #[error("an internal error occurred: {0}")]
-    Generic(String),
+    Internal(String),
 }
 
 #[op2]
@@ -111,7 +111,7 @@ async fn op_read_request_chunk(state: Rc<RefCell<OpState>>) -> Result<Vec<u8>, J
 
     match chunk {
         Some(Ok(chunk)) => Ok(chunk.into()),
-        Some(Err(err)) => Err(JsError::Generic(err)),
+        Some(Err(err)) => Err(JsError::Internal(err)),
         None => Ok(vec![]),
     }
 }

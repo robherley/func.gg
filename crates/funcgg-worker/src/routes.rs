@@ -2,7 +2,7 @@ use axum::{
     Router,
     body::Body,
     extract::{Request, State},
-    http::StatusCode,
+    http::{StatusCode, Uri},
     response::{IntoResponse, Response},
 };
 use deno_core::futures::StreamExt;
@@ -18,7 +18,16 @@ pub async fn invoke(State(pool): State<Arc<Pool>>, request: Request) -> Response
     let js_code = include_str!("../examples/basic.js");
 
     let method = request.method().to_string();
-    let uri = request.uri().to_string();
+    let path_and_query = request.uri().path_and_query().unwrap().to_owned();
+
+    let uri = Uri::builder()
+        .scheme("http")
+        .authority(pool.addr.clone())
+        .path_and_query(path_and_query)
+        .build()
+        .unwrap()
+        .to_string();
+
     let headers = request
         .headers()
         .iter()
@@ -30,13 +39,8 @@ pub async fn invoke(State(pool): State<Arc<Pool>>, request: Request) -> Response
         .and_then(|cl| cl.parse::<usize>().ok())
         .unwrap_or(0);
 
-    // TODO: do we want to always stream?
-    // let use_streaming = content_length > 64 * 1024; // Stream if > 64KB
-
     let mut stream = request.into_body().into_data_stream();
-
     let (body_tx, body_rx) = mpsc::channel(1);
-
     tokio::spawn(async move {
         while let Some(chunk) = stream.next().await {
             let result = chunk.map_err(|err| format!("unable to read request body: {}", err));

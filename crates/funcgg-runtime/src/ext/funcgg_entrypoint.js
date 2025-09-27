@@ -7,6 +7,30 @@ import "ext:funcgg_runtime/deno_fetch.js";
 
 const { op_get_request, op_set_response, op_get_request_id } = Deno.core.ops;
 
+function getRequest() {
+  let body;
+
+  let { uri, method, headers } = op_get_request();
+  if (method !== "GET" && method !== "POST") {
+    body = new ReadableStream({
+      async pull(controller) {
+        const chunk = await Deno.core.ops.op_read_request_chunk();
+        if (chunk === null || chunk.length === 0) {
+          controller.close();
+        } else {
+          controller.enqueue(chunk);
+        }
+      },
+    });
+  }
+
+  return new Request(uri, {
+    method,
+    headers,
+    body,
+  });
+}
+
 Object.defineProperty(globalThis, "Func", {
   value: {},
   writable: false,
@@ -16,7 +40,7 @@ Object.defineProperty(globalThis, "Func", {
 
 Object.defineProperties(globalThis.Func, {
   request: {
-    get: op_get_request,
+    get: getRequest,
     set: () => {},
     enumerable: true,
     configurable: false,
