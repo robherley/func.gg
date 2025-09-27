@@ -101,13 +101,13 @@ pub fn op_tls_peer_certificate(#[smi] _: u32, _: bool) -> Option<deno_core::serd
 #[op2(async)]
 #[buffer]
 async fn op_read_request_chunk(state: Rc<RefCell<OpState>>) -> Result<Vec<u8>, JsError> {
-    let chunk = state
-        .borrow()
-        .borrow::<Rc<RefCell<super::sandbox::State>>>()
-        .borrow_mut()
-        .incoming_body_rx
-        .recv()
-        .await;
+    let receiver = {
+        let state_borrow = state.borrow();
+        let sandbox_state = state_borrow.borrow::<Rc<RefCell<super::sandbox::State>>>();
+        sandbox_state.borrow().incoming_body_rx.clone()
+    };
+
+    let chunk = receiver.lock().await.recv().await;
 
     match chunk {
         Some(Ok(chunk)) => Ok(chunk.into()),

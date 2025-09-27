@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::LazyLock;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
 
 use super::ext;
@@ -26,7 +26,7 @@ pub struct State {
     pub req: Option<http::Request>,
     pub res: Option<http::Response>,
     pub request_id: Uuid,
-    pub incoming_body_rx: mpsc::Receiver<Result<bytes::Bytes, String>>,
+    pub incoming_body_rx: Rc<Mutex<mpsc::Receiver<Result<bytes::Bytes, String>>>>,
 }
 
 pub struct Sandbox {
@@ -46,7 +46,7 @@ impl Sandbox {
             request_id,
             req: None,
             res: None,
-            incoming_body_rx,
+            incoming_body_rx: Rc::new(Mutex::new(incoming_body_rx)),
         }));
 
         let extension_transpiler = Rc::new(loader::transpile);
