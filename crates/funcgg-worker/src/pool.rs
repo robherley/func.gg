@@ -9,7 +9,7 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio::time::{Instant, sleep};
 use uuid::Uuid;
 
-use super::worker::{Worker, WorkerRequest};
+use crate::worker::{Worker, WorkerRequest};
 use funcgg_runtime::http;
 
 type PendingRequests = HashMap<Uuid, oneshot::Sender<Result<http::Response, String>>>;
@@ -77,10 +77,12 @@ pub struct Pool {
     current_workers: Arc<Mutex<HashMap<usize, WorkerState>>>,
     // The size of the worker pool
     pool_size: usize,
+    // The address of the worker pool
+    pub addr: String,
 }
 
 impl Pool {
-    pub fn new(pool_size: usize) -> Self {
+    pub fn new(pool_size: usize, addr: String) -> Self {
         let (supervisor_tx, supervisor_rx) = mpsc::unbounded_channel();
         let worker_txs = Vec::with_capacity(pool_size);
 
@@ -90,6 +92,7 @@ impl Pool {
             supervisor_rx: Arc::new(Mutex::new(supervisor_rx)),
             pending_requests: Arc::new(Mutex::new(HashMap::new())),
             current_workers: Arc::new(Mutex::new(HashMap::new())),
+            addr,
         };
 
         pool.spawn_supervisor();
@@ -101,6 +104,7 @@ impl Pool {
         &self,
         js_code: String,
         http_request: http::Request,
+        incoming_body_rx: mpsc::Receiver<Result<bytes::Bytes, String>>,
     ) -> Result<http::Response, String> {
         let request_id = Uuid::now_v7();
         let (response_tx, response_rx) = oneshot::channel();
@@ -110,6 +114,7 @@ impl Pool {
             id: request_id,
             js_code,
             http_request,
+            incoming_body_rx,
         };
 
         self.insert_pending(request_id, response_tx).await;
@@ -252,7 +257,6 @@ impl Pool {
     }
 
     /// Finds the next free worker index. If all workers are busy, it picks the one with the lowest deadline.
-    /// TODO: this does not currently take into account the initialization time of the sandbox, just executing the modules.
     async fn next_worker_idx(&self) -> usize {
         let mut worker_ids: Vec<usize> = (0..self.pool_size).collect();
         worker_ids.shuffle(&mut rand::rng());

@@ -1,5 +1,10 @@
 export async function handler(req) {
-  const who = req.body ? JSON.parse(req.body).name : "World";
+  console.log("[req]", req);
+  try {
+    const body = await req.json();
+    console.log("[body]", body);
+  } catch {}
+
   return {
     status: 200,
     headers: {
@@ -7,7 +12,7 @@ export async function handler(req) {
       "X-Foo": "bar",
     },
     body: JSON.stringify({
-      msg: `Hello ${who} from the worker!`,
+      msg: `Hello from the worker!`,
     }),
   };
 }

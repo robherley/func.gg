@@ -21,10 +21,10 @@ async function resolveHandlerMethod() {
 
 async function worker() {
   try {
-    const req = Func.request;
     const handler = await resolveHandlerMethod();
-    const res = await handler(req);
+    const res = await handler(Func.request);
 
+    console.log("[response]", res);
     if (!res || typeof res !== "object") {
       throw new Error("invalid response");
     }
@@ -45,6 +45,4 @@ async function worker() {
   }
 }
 
-const res = await worker();
-console.log("Response", res);
-Func.response = res;
+Func.response = await worker();
