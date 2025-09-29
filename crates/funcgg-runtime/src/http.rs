@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+// TODO: see if we can get rid of these "in the middle" types
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Request {
     pub method: String,
@@ -15,7 +17,6 @@ pub struct Request {
 pub struct Response {
     pub status: u16,
     pub headers: HashMap<String, String>,
-    pub body: String,
 }
 
 impl Response {
@@ -28,7 +29,7 @@ impl Response {
         Ok(())
     }
 
-    pub fn set_runtime_headers(&mut self, request_id: Uuid) {
+    pub fn apply_runtime_headers(&mut self, request_id: Uuid) {
         self.headers
             .insert("X-FUNC-GG-REQUEST-ID".into(), request_id.to_string());
     }

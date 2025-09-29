@@ -5,14 +5,12 @@ export async function handler(req) {
     console.log("[body]", body);
   } catch {}
 
-  return {
-    status: 200,
+  const res = new Response("hello world", {
     headers: {
-      "Content-Type": "application/json",
       "X-Foo": "bar",
     },
-    body: JSON.stringify({
-      msg: `Hello from the worker!`,
-    }),
-  };
+  });
+
+  console.log("[res]", res);
+  return res;
 }

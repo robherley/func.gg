@@ -34,6 +34,7 @@ serde_json = "1.0"
 serde_v8 = "0.264.0"
 thiserror = "2.0.16"
 tokio = { version = "1.42.0", features = ["io-util", "rt", "macros", "net"] }
+tokio-stream = "0.1.17"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "request-id"] }
 tracing = "0.1"
