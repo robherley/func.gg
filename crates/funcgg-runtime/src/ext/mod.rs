@@ -99,7 +99,7 @@ async fn op_set_response(
         None => return Err(JsError::Internal("Response already sent".to_string())),
     };
 
-    if let Err(_) = sender.send(res) {
+    if sender.send(res).is_err() {
         return Err(JsError::Internal("Unable to send response".to_string()));
     }
 

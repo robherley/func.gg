@@ -121,11 +121,6 @@ impl Sandbox {
             }
         }
 
-        // TODO: move runtime headers when sending response
-        // let mut res: http::Response = self.state.borrow_mut().res.take().unwrap_or_default();
-        // res.default_and_validate()?;
-        // res.set_runtime_headers(self.state.borrow().request_id);
-
         Ok(())
     }
 }
