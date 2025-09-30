@@ -88,12 +88,12 @@ pub async fn invoke(State(pool): State<Arc<Pool>>, request: Request) -> Response
         builder = builder.header(key, value);
     }
 
-    let stream = ReceiverStream::new(response_body_rx).map(|bytes| Ok::<_, Infallible>(bytes));
+    let stream = ReceiverStream::new(response_body_rx).map(Ok::<_, Infallible>);
     match builder.body(Body::from_stream(stream)) {
         Ok(response) => response,
         Err(err) => {
             tracing::error!("Failed to build response: {}", err);
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response();
+            (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
         }
     }
 }

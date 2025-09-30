@@ -146,7 +146,7 @@ async fn op_write_response_chunk(
     };
 
     sender
-        .send(bytes::Bytes::from(data.to_vec())) // TODO: BAD! this is a copy
+        .send(data.to_vec().into())
         .await
         .map_err(|err| JsError::Internal(err.to_string()))?;
 
