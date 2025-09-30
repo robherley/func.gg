@@ -5,16 +5,50 @@ import "ext:funcgg_runtime/deno_web.js";
 import "ext:funcgg_runtime/deno_net.js";
 import "ext:funcgg_runtime/deno_fetch.js";
 
-const { op_get_request, op_set_response, op_get_request_id } = Deno.core.ops;
+const {
+  op_get_request,
+  op_set_response,
+  op_get_request_id,
+  op_read_request_chunk,
+  op_write_response_chunk,
+} = Deno.core.ops;
+
+async function setResponse(res) {
+  if (!(res instanceof Response)) {
+    throw new Error("Response must be of class Response");
+  }
+
+  op_set_response({
+    status: res.status,
+    headers: res.headers,
+    body: "",
+  });
+
+  res.body.pipeTo(newResponseStream());
+}
+
+function newResponseStream() {
+  let closed = false;
+  return new WritableStream({
+    async write(chunk) {
+      if (closed) throw new Error("Stream is closed");
+      op_write_response_chunk(chunk);
+    },
+    async close() {
+      if (closed) return;
+      closed = true;
+    },
+  });
+}
 
 function getRequest() {
   let body;
 
   let { uri, method, headers } = op_get_request();
-  if (method !== "GET" && method !== "POST") {
+  if (method !== "GET" && method !== "HEAD") {
     body = new ReadableStream({
       async pull(controller) {
-        const chunk = await Deno.core.ops.op_read_request_chunk();
+        const chunk = await op_read_request_chunk();
         if (chunk === null || chunk.length === 0) {
           controller.close();
         } else {
@@ -45,9 +79,8 @@ Object.defineProperties(globalThis.Func, {
     enumerable: true,
     configurable: false,
   },
-  response: {
-    get: () => {},
-    set: op_set_response,
+  setResponse: {
+    value: setResponse,
     enumerable: true,
     configurable: false,
   },

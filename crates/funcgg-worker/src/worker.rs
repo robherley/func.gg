@@ -1,5 +1,5 @@
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 use super::pool::StateChange;
@@ -13,6 +13,8 @@ pub struct WorkerRequest {
     pub js_code: String,
     pub http_request: http::Request,
     pub incoming_body_rx: mpsc::Receiver<Result<bytes::Bytes, String>>,
+    pub outgoing_body_tx: mpsc::Sender<bytes::Bytes>,
+    pub response_oneshot_tx: oneshot::Sender<http::Response>,
 }
 
 pub struct Worker {
@@ -44,36 +46,44 @@ impl Worker {
             self.notify(StateChange::Received(self.id, self.timeout));
             tracing::info!("Worker accepted request");
 
-            let result = self.process_request(request).await;
-            self.notify(StateChange::Finished(self.id, request_id, result));
+            if let Err(err) = self.process_request(request).await {
+                // TODO: if a failure happens here, the client might not receive a response
+                tracing::error!("Failed to process request: {}", err);
+            }
+            self.notify(StateChange::Finished(self.id, request_id));
         }
 
         tracing::info!("Worker shutting down");
     }
 
-    async fn process_request(&self, request: WorkerRequest) -> Result<http::Response, String> {
-        let mut sandbox =
-            match Sandbox::new(request.id, Some(STARTUP_SNAPSHOT), request.incoming_body_rx) {
-                Ok(rt) => rt,
-                Err(e) => {
-                    tracing::error!(
-                        error = %e,
-                        "Failed to create JavaScript runtime"
-                    );
-                    return Err(format!("unable to create runtime: {}", e));
-                }
-            };
-        self.notify(StateChange::Initialized(self.id));
+    // TODO: make this state change to failure on failure
+    async fn process_request(&self, request: WorkerRequest) -> Result<(), String> {
+        let mut sandbox = match Sandbox::new(
+            request.id,
+            Some(STARTUP_SNAPSHOT),
+            request.incoming_body_rx,
+            request.outgoing_body_tx,
+            request.response_oneshot_tx,
+        ) {
+            Ok(rt) => rt,
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    "Failed to create JavaScript runtime"
+                );
+                return Err(format!("unable to create runtime: {}", e));
+            }
+        };
 
         let handle = sandbox.runtime.v8_isolate().thread_safe_handle();
         self.notify(StateChange::Started(self.id, handle));
 
-        let response = sandbox
+        sandbox
             .execute(request.js_code, request.http_request, self.timeout)
             .await
             .map_err(|e| format!("handler invocation failed: {}", e))?;
 
-        Ok(response)
+        Ok(())
     }
 
     fn notify(&self, msg: StateChange) {

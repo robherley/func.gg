@@ -6,9 +6,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use deno_core::futures::StreamExt;
-use std::collections::HashMap;
+use funcgg_runtime::http;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use std::{collections::HashMap, convert::Infallible};
+use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::pool::Pool;
 
@@ -56,10 +58,27 @@ pub async fn invoke(State(pool): State<Arc<Pool>>, request: Request) -> Response
         headers,
     };
 
-    let res = match pool.handle(js_code.to_string(), req, body_rx).await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::error!("Handler invocation failed: {}", e);
+    let (response_body_tx, response_body_rx) = mpsc::channel::<bytes::Bytes>(1);
+    let (response_tx, response_rx) = oneshot::channel::<http::Response>();
+
+    if let Err(err) = pool
+        .send_work(
+            js_code.to_string(),
+            req,
+            body_rx,
+            response_body_tx,
+            response_tx,
+        )
+        .await
+    {
+        tracing::error!("Handler invocation failed: {}", err);
+        return (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response();
+    };
+
+    let res = match response_rx.await {
+        Ok(res) => res,
+        Err(err) => {
+            tracing::error!("Response channel error: {}", err);
             return (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response();
         }
     };
@@ -69,7 +88,14 @@ pub async fn invoke(State(pool): State<Arc<Pool>>, request: Request) -> Response
         builder = builder.header(key, value);
     }
 
-    builder.body(Body::from(res.body)).unwrap()
+    let stream = ReceiverStream::new(response_body_rx).map(Ok::<_, Infallible>);
+    match builder.body(Body::from_stream(stream)) {
+        Ok(response) => response,
+        Err(err) => {
+            tracing::error!("Failed to build response: {}", err);
+            (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
+        }
+    }
 }
 
 pub fn build(pool: Arc<Pool>) -> Router {

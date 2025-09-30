@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::LazyLock;
 use std::time::Duration;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use uuid::Uuid;
 
 use super::ext;
@@ -15,7 +15,7 @@ use super::loader;
 
 static HEAP_LIMIT: usize = 64 * 1024 * 1024; // 64MB
 
-static WORKER_CODE: &str = include_str!("./js/entrypoint.js");
+static WORKER_CODE: &str = include_str!("./js/worker.js");
 static WORKER_MOD_SPECIFIER: LazyLock<Url> =
     LazyLock::new(|| "func:worker".parse().expect("bad module specifier"));
 
@@ -27,6 +27,8 @@ pub struct State {
     pub res: Option<http::Response>,
     pub request_id: Uuid,
     pub incoming_body_rx: Rc<Mutex<mpsc::Receiver<Result<bytes::Bytes, String>>>>,
+    pub outgoing_body_tx: mpsc::Sender<bytes::Bytes>,
+    pub response_oneshot_tx: Option<oneshot::Sender<http::Response>>,
 }
 
 pub struct Sandbox {
@@ -39,6 +41,8 @@ impl Sandbox {
         request_id: Uuid,
         startup_snapshot: Option<&'static [u8]>,
         incoming_body_rx: mpsc::Receiver<Result<bytes::Bytes, String>>,
+        outgoing_body_tx: mpsc::Sender<bytes::Bytes>,
+        response_oneshot_tx: oneshot::Sender<http::Response>,
     ) -> Result<Self> {
         _ = CryptoProvider::install_default(aws_lc_rs::default_provider());
 
@@ -47,6 +51,8 @@ impl Sandbox {
             req: None,
             res: None,
             incoming_body_rx: Rc::new(Mutex::new(incoming_body_rx)),
+            outgoing_body_tx,
+            response_oneshot_tx: Some(response_oneshot_tx),
         }));
 
         let extension_transpiler = Rc::new(loader::transpile);
@@ -82,7 +88,7 @@ impl Sandbox {
         user_code: String,
         request: http::Request,
         timeout_duration: Duration,
-    ) -> Result<http::Response> {
+    ) -> Result<()> {
         let execution_result = tokio::time::timeout(timeout_duration, async {
             let _ = self
                 .runtime
@@ -115,10 +121,6 @@ impl Sandbox {
             }
         }
 
-        let mut res: http::Response = self.state.borrow_mut().res.take().unwrap_or_default();
-        res.default_and_validate()?;
-        res.set_runtime_headers(self.state.borrow().request_id);
-
-        Ok(res)
+        Ok(())
     }
 }
