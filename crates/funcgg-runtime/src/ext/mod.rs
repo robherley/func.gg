@@ -10,8 +10,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::vec;
 
-use super::http;
-use super::sandbox::State;
+use super::comms;
+use super::runtime::State;
 
 mod permissions;
 use permissions::Permissions;
@@ -74,18 +74,18 @@ pub fn op_tls_peer_certificate(#[smi] _: u32, _: bool) -> Option<deno_core::serd
 
 #[op2]
 #[serde]
-fn op_get_request(state: &mut OpState) -> Option<http::Request> {
+fn op_get_request(state: &mut OpState) -> Option<comms::Request> {
     state.borrow::<Rc<RefCell<State>>>().borrow().req.clone()
 }
 
 #[op2(async)]
 async fn op_set_response(
     state: Rc<RefCell<OpState>>,
-    #[serde] mut res: http::Response,
+    #[serde] mut res: comms::Response,
 ) -> Result<(), JsError> {
     let (sender, request_id) = {
         let state_borrow = state.borrow();
-        let sandbox_state = state_borrow.borrow::<Rc<RefCell<super::sandbox::State>>>();
+        let sandbox_state = state_borrow.borrow::<Rc<RefCell<super::runtime::State>>>();
         let mut borrowed = sandbox_state.borrow_mut();
         (borrowed.response_tx.take(), borrowed.request_id)
     };
@@ -121,7 +121,7 @@ fn op_get_request_id(state: &mut OpState) -> String {
 async fn op_read_request_chunk(state: Rc<RefCell<OpState>>) -> Result<Vec<u8>, JsError> {
     let receiver = {
         let state_borrow = state.borrow();
-        let sandbox_state = state_borrow.borrow::<Rc<RefCell<super::sandbox::State>>>();
+        let sandbox_state = state_borrow.borrow::<Rc<RefCell<super::runtime::State>>>();
         sandbox_state.borrow().incoming_body_rx.clone()
     };
 
@@ -141,7 +141,7 @@ async fn op_write_response_chunk(
 ) -> Result<(), JsError> {
     let sender = {
         let state_borrow = state.borrow();
-        let sandbox_state = state_borrow.borrow::<Rc<RefCell<super::sandbox::State>>>();
+        let sandbox_state = state_borrow.borrow::<Rc<RefCell<super::runtime::State>>>();
         sandbox_state.borrow().outgoing_body_tx.clone()
     };
 

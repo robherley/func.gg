@@ -1,4 +1,3 @@
-mod ext;
 mod loader;
 mod sandbox;
 mod snapshot;

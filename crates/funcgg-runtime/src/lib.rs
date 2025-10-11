@@ -1,7 +1,7 @@
 mod ext;
 mod loader;
-mod sandbox;
+mod runtime;
 
-pub mod http;
+pub mod comms;
 pub mod snapshot;
-pub use sandbox::Sandbox;
+pub use runtime::Sandbox;

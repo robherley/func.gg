@@ -9,8 +9,8 @@ use std::time::Duration;
 use tokio::sync::{Mutex, mpsc, oneshot};
 use uuid::Uuid;
 
+use super::comms;
 use super::ext;
-use super::http;
 use super::loader;
 
 static HEAP_LIMIT: usize = 64 * 1024 * 1024; // 64MB
@@ -23,12 +23,12 @@ static USER_MOD_SPECIFIER: LazyLock<Url> =
     LazyLock::new(|| "func:user-code".parse().expect("bad module specifier"));
 
 pub struct State {
-    pub req: Option<http::Request>,
-    pub res: Option<http::Response>,
+    pub req: Option<comms::Request>,
+    pub res: Option<comms::Response>,
     pub request_id: Uuid,
     pub incoming_body_rx: Rc<Mutex<mpsc::Receiver<Result<bytes::Bytes, String>>>>,
     pub outgoing_body_tx: mpsc::Sender<bytes::Bytes>,
-    pub response_tx: Option<oneshot::Sender<http::Response>>,
+    pub response_tx: Option<oneshot::Sender<comms::Response>>,
 }
 
 pub struct Sandbox {
@@ -40,9 +40,7 @@ impl Sandbox {
     pub fn new(
         request_id: Uuid,
         startup_snapshot: Option<&'static [u8]>,
-        incoming_body_rx: mpsc::Receiver<Result<bytes::Bytes, String>>,
-        outgoing_body_tx: mpsc::Sender<bytes::Bytes>,
-        response_tx: oneshot::Sender<http::Response>,
+        channels: comms::Channels,
     ) -> Result<Self> {
         _ = CryptoProvider::install_default(aws_lc_rs::default_provider());
 
@@ -50,9 +48,9 @@ impl Sandbox {
             request_id,
             req: None,
             res: None,
-            incoming_body_rx: Rc::new(Mutex::new(incoming_body_rx)),
-            outgoing_body_tx,
-            response_tx: Some(response_tx),
+            incoming_body_rx: Rc::new(Mutex::new(channels.incoming_body_rx)),
+            outgoing_body_tx: channels.outgoing_body_tx,
+            response_tx: Some(channels.response_tx),
         }));
 
         let extension_transpiler = Rc::new(loader::transpile);
@@ -86,7 +84,7 @@ impl Sandbox {
     pub async fn execute(
         &mut self,
         user_code: String,
-        request: http::Request,
+        request: comms::Request,
         timeout_duration: Duration,
     ) -> Result<()> {
         let execution_result = tokio::time::timeout(timeout_duration, async {

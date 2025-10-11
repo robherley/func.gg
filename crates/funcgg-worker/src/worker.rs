@@ -1,9 +1,9 @@
 use std::time::Duration;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use super::pool::StateChange;
-use funcgg_runtime::{Sandbox, http};
+use funcgg_runtime::{Sandbox, comms};
 
 static STARTUP_SNAPSHOT: &[u8] = include_bytes!(env!("SNAPSHOT_PATH"));
 
@@ -11,10 +11,8 @@ static STARTUP_SNAPSHOT: &[u8] = include_bytes!(env!("SNAPSHOT_PATH"));
 pub struct WorkerRequest {
     pub id: Uuid,
     pub js_code: String,
-    pub http_request: http::Request,
-    pub incoming_body_rx: mpsc::Receiver<Result<bytes::Bytes, String>>,
-    pub outgoing_body_tx: mpsc::Sender<bytes::Bytes>,
-    pub response_tx: oneshot::Sender<http::Response>,
+    pub http_request: comms::Request,
+    pub channels: comms::Channels,
 }
 
 pub struct Worker {
@@ -58,13 +56,7 @@ impl Worker {
 
     // TODO: make this state change to failure on failure
     async fn process_request(&self, request: WorkerRequest) -> Result<(), String> {
-        let mut sandbox = match Sandbox::new(
-            request.id,
-            Some(STARTUP_SNAPSHOT),
-            request.incoming_body_rx,
-            request.outgoing_body_tx,
-            request.response_tx,
-        ) {
+        let mut sandbox = match Sandbox::new(request.id, Some(STARTUP_SNAPSHOT), request.channels) {
             Ok(rt) => rt,
             Err(e) => {
                 tracing::error!(
