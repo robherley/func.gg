@@ -2,6 +2,7 @@ use anyhow::Result;
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 // TODO: see if we can get rid of these "in the middle" types
@@ -33,4 +34,11 @@ impl Response {
         self.headers
             .insert("X-FUNC-GG-REQUEST-ID".into(), request_id.to_string());
     }
+}
+
+#[derive(Debug)]
+pub struct Channels {
+    pub incoming_body_rx: mpsc::Receiver<Result<bytes::Bytes, String>>,
+    pub outgoing_body_tx: mpsc::Sender<bytes::Bytes>,
+    pub response_tx: oneshot::Sender<Response>,
 }

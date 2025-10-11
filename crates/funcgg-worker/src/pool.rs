@@ -5,12 +5,12 @@ use rand::seq::SliceRandom;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::sync::{Mutex, mpsc};
 use tokio::time::{Instant, sleep};
 use uuid::Uuid;
 
 use crate::worker::{Worker, WorkerRequest};
-use funcgg_runtime::http;
+use funcgg_runtime::comms;
 
 #[derive(Debug)]
 pub enum StateChange {
@@ -79,10 +79,8 @@ impl Pool {
     pub async fn send_work(
         &self,
         js_code: String,
-        http_request: http::Request,
-        incoming_body_rx: mpsc::Receiver<Result<bytes::Bytes, String>>,
-        outgoing_body_tx: mpsc::Sender<bytes::Bytes>,
-        response_oneshot_tx: oneshot::Sender<http::Response>,
+        http_request: comms::Request,
+        channels: comms::Channels,
     ) -> Result<(), String> {
         let request_id = Uuid::now_v7();
 
@@ -91,9 +89,7 @@ impl Pool {
             id: request_id,
             js_code,
             http_request,
-            incoming_body_rx,
-            outgoing_body_tx,
-            response_oneshot_tx,
+            channels,
         };
 
         tracing::debug!(

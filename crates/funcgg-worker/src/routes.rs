@@ -6,7 +6,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use deno_core::futures::StreamExt;
-use funcgg_runtime::http;
+use funcgg_runtime::comms;
 use std::sync::Arc;
 use std::{collections::HashMap, convert::Infallible};
 use tokio::sync::{mpsc, oneshot};
@@ -52,25 +52,22 @@ pub async fn invoke(State(pool): State<Arc<Pool>>, request: Request) -> Response
         }
     });
 
-    let req = funcgg_runtime::http::Request {
+    let req = funcgg_runtime::comms::Request {
         method,
         uri,
         headers,
     };
 
     let (response_body_tx, response_body_rx) = mpsc::channel::<bytes::Bytes>(1);
-    let (response_tx, response_rx) = oneshot::channel::<http::Response>();
+    let (response_tx, response_rx) = oneshot::channel::<comms::Response>();
 
-    if let Err(err) = pool
-        .send_work(
-            js_code.to_string(),
-            req,
-            body_rx,
-            response_body_tx,
-            response_tx,
-        )
-        .await
-    {
+    let channels = comms::Channels {
+        incoming_body_rx: body_rx,
+        outgoing_body_tx: response_body_tx,
+        response_tx,
+    };
+
+    if let Err(err) = pool.send_work(js_code.to_string(), req, channels).await {
         tracing::error!("Handler invocation failed: {}", err);
         return (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response();
     };

@@ -2,8 +2,7 @@ use deno_core::snapshot::CreateSnapshotOutput;
 use std::env;
 use std::rc::Rc;
 
-use super::ext;
-use crate::loader;
+use super::{ext, loader};
 
 pub const FILE_NAME: &str = "FUNCGG_RUNTIME_SNAPSHOT.bin";
 
