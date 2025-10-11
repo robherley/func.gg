@@ -87,7 +87,7 @@ async fn op_set_response(
         let state_borrow = state.borrow();
         let sandbox_state = state_borrow.borrow::<Rc<RefCell<super::sandbox::State>>>();
         let mut borrowed = sandbox_state.borrow_mut();
-        (borrowed.response_oneshot_tx.take(), borrowed.request_id)
+        (borrowed.response_tx.take(), borrowed.request_id)
     };
 
     res.apply_runtime_headers(request_id);

@@ -82,7 +82,7 @@ impl Pool {
         http_request: http::Request,
         incoming_body_rx: mpsc::Receiver<Result<bytes::Bytes, String>>,
         outgoing_body_tx: mpsc::Sender<bytes::Bytes>,
-        response_oneshot_tx: oneshot::Sender<http::Response>,
+        response_tx: oneshot::Sender<http::Response>,
     ) -> Result<(), String> {
         let request_id = Uuid::now_v7();
 
@@ -93,7 +93,7 @@ impl Pool {
             http_request,
             incoming_body_rx,
             outgoing_body_tx,
-            response_oneshot_tx,
+            response_tx,
         };
 
         tracing::debug!(

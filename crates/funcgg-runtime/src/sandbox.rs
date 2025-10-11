@@ -28,7 +28,7 @@ pub struct State {
     pub request_id: Uuid,
     pub incoming_body_rx: Rc<Mutex<mpsc::Receiver<Result<bytes::Bytes, String>>>>,
     pub outgoing_body_tx: mpsc::Sender<bytes::Bytes>,
-    pub response_oneshot_tx: Option<oneshot::Sender<http::Response>>,
+    pub response_tx: Option<oneshot::Sender<http::Response>>,
 }
 
 pub struct Sandbox {
@@ -42,7 +42,7 @@ impl Sandbox {
         startup_snapshot: Option<&'static [u8]>,
         incoming_body_rx: mpsc::Receiver<Result<bytes::Bytes, String>>,
         outgoing_body_tx: mpsc::Sender<bytes::Bytes>,
-        response_oneshot_tx: oneshot::Sender<http::Response>,
+        response_tx: oneshot::Sender<http::Response>,
     ) -> Result<Self> {
         _ = CryptoProvider::install_default(aws_lc_rs::default_provider());
 
@@ -52,7 +52,7 @@ impl Sandbox {
             res: None,
             incoming_body_rx: Rc::new(Mutex::new(incoming_body_rx)),
             outgoing_body_tx,
-            response_oneshot_tx: Some(response_oneshot_tx),
+            response_tx: Some(response_tx),
         }));
 
         let extension_transpiler = Rc::new(loader::transpile);

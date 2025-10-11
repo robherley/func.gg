@@ -14,7 +14,7 @@ pub struct WorkerRequest {
     pub http_request: http::Request,
     pub incoming_body_rx: mpsc::Receiver<Result<bytes::Bytes, String>>,
     pub outgoing_body_tx: mpsc::Sender<bytes::Bytes>,
-    pub response_oneshot_tx: oneshot::Sender<http::Response>,
+    pub response_tx: oneshot::Sender<http::Response>,
 }
 
 pub struct Worker {
@@ -63,7 +63,7 @@ impl Worker {
             Some(STARTUP_SNAPSHOT),
             request.incoming_body_rx,
             request.outgoing_body_tx,
-            request.response_oneshot_tx,
+            request.response_tx,
         ) {
             Ok(rt) => rt,
             Err(e) => {

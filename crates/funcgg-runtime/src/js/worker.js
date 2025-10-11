@@ -20,15 +20,18 @@ async function resolveHandler() {
 }
 
 async function work() {
+  let response;
   try {
     const handler = await resolveHandler();
-    const response = await handler(Func.request);
-    return Func.setResponse(response);
+    response = await handler(Func.request);
   } catch (error) {
-    const msg = error && error.message ? error.message : String(error);
-    return new Response(`Internal Server Error: ${msg}`, {
+    const msg =
+      error.stack || `Internal Server Error: ${error?.message || error}`;
+    response = new Response(msg, {
       status: 500,
     });
+  } finally {
+    Func.setResponse(response);
   }
 }
 
