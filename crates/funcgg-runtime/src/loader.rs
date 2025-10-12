@@ -56,7 +56,7 @@ impl deno_core::ModuleLoader for ModuleLoader {
 
         let specifier = specifier.clone();
         let http_client = self.http_client.clone();
-        return ModuleLoadResponse::Async(
+        ModuleLoadResponse::Async(
             async move {
                 let res = http_client
                     .get(specifier.clone())
@@ -108,16 +108,16 @@ impl deno_core::ModuleLoader for ModuleLoader {
                     .await
                     .map_err(|err| ModuleLoaderError::generic(err.to_string()))?;
 
-                return Ok(ModuleSource::new_with_redirect(
+                Ok(ModuleSource::new_with_redirect(
                     module_type,
                     ModuleSourceCode::String(src_text.into()),
                     &original_specifier,
                     &found_specifier,
                     None,
-                ));
+                ))
             }
             .boxed_local(),
-        );
+        )
     }
 }
 
