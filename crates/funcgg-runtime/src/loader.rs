@@ -1,15 +1,26 @@
+use std::borrow::Cow;
+use std::time::Duration;
+
 use deno_ast::{MediaType, ParseParams};
 use deno_core::{
-    ModuleCodeString, ModuleLoadResponse, ModuleName, ModuleSpecifier, SourceMapData,
-    error::ModuleLoaderError,
+    ModuleCodeString, ModuleLoadResponse, ModuleName, ModuleSource, ModuleSourceCode,
+    ModuleSpecifier, ModuleType, SourceMapData, error::ModuleLoaderError, futures::FutureExt,
 };
 use deno_error::JsErrorBox;
 
-pub struct ModuleLoader;
+pub struct ModuleLoader {
+    http_client: reqwest::Client,
+}
 
 impl ModuleLoader {
     pub fn new() -> Self {
-        Self {}
+        let http_client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .user_agent("func.gg/module_loader")
+            .build()
+            .expect("Unable to build HTTP client");
+
+        Self { http_client }
     }
 }
 
@@ -26,15 +37,87 @@ impl deno_core::ModuleLoader for ModuleLoader {
 
     fn load(
         &self,
-        module_specifier: &ModuleSpecifier,
+        specifier: &ModuleSpecifier,
         _maybe_referrer: Option<&ModuleSpecifier>,
-        _is_dynamic: bool,
+        is_dyn_import: bool,
         _requested_module_type: deno_core::RequestedModuleType,
-    ) -> deno_core::ModuleLoadResponse {
-        tracing::error!("attempting to load module: {}", module_specifier);
-        ModuleLoadResponse::Sync(Err(ModuleLoaderError::generic(
-            "module loading is not supported",
-        )))
+    ) -> ModuleLoadResponse {
+        if is_dyn_import {
+            return ModuleLoadResponse::Sync(Err(ModuleLoaderError::generic(
+                "dynamic module loading is not supported",
+            )));
+        }
+
+        if specifier.scheme() != "https" {
+            return ModuleLoadResponse::Sync(Err(ModuleLoaderError::generic(
+                "only modules with an 'https' scheme are supported",
+            )));
+        }
+
+        let specifier = specifier.clone();
+        let http_client = self.http_client.clone();
+        ModuleLoadResponse::Async(
+            async move {
+                let res = http_client
+                    .get(specifier.clone())
+                    .query(&[("target", "deno")]) // tells services to explicitly redirect
+                    .send()
+                    .await
+                    .map_err(|err| ModuleLoaderError::generic(err.to_string()))?;
+
+                let original_specifier = {
+                    let mut url = specifier.clone();
+                    url.set_query(None);
+                    url
+                };
+
+                let found_specifier = {
+                    let mut url = res.url().clone();
+                    url.set_query(None);
+                    url
+                };
+
+                let content_type = res
+                    .headers()
+                    .get("content-type")
+                    .map(|ct| ct.to_str().unwrap_or_default())
+                    .unwrap_or_default()
+                    .split(';')
+                    .next()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_lowercase();
+                let module_type = match content_type.as_ref() {
+                    "application/javascript"
+                    | "text/javascript"
+                    | "application/ecmascript"
+                    | "text/ecmascript" => ModuleType::JavaScript,
+                    "application/wasm" => ModuleType::Wasm,
+                    "application/json" | "text/json" => ModuleType::Json,
+                    "text/plain" | "application/octet-stream" => ModuleType::Text,
+                    s => ModuleType::Other(Cow::Owned(s.to_string())),
+                };
+
+                if !res.status().is_success() {
+                    return Err(ModuleLoaderError::generic("failed to load module"));
+                }
+
+                // TODO: probably use bytes
+                let src_text = res
+                    .text()
+                    .await
+                    .map_err(|err| ModuleLoaderError::generic(err.to_string()))?;
+
+                Ok(ModuleSource::new_with_redirect(
+                    module_type,
+                    ModuleSourceCode::String(src_text.into()),
+                    &original_specifier,
+                    &found_specifier,
+                    None,
+                ))
+            }
+            .boxed_local(),
+        )
     }
 }
 

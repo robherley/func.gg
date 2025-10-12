@@ -23,6 +23,7 @@ deno_url = { workspace = true }
 deno_web = { workspace = true }
 deno_webidl = { workspace = true }
 http = { workspace = true }
+reqwest = { workspace = true }
 rustls = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
