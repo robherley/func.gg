@@ -17,7 +17,17 @@ use crate::pool::Pool;
 pub async fn invoke(State(pool): State<Arc<Pool>>, request: Request) -> Response {
     // TODO: temporary, eventually this should be served dynamically
     // possibly serve https://github.com/denoland/eszip
-    let js_code = include_str!("../examples/basic.js");
+    let js_code = match tokio::fs::read_to_string("crates/funcgg-worker/examples/basic.js").await {
+        Ok(code) => code,
+        Err(err) => {
+            tracing::error!("Failed to load JavaScript code: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to load handler code",
+            )
+                .into_response();
+        }
+    };
 
     let method = request.method().to_string();
     let path_and_query = request.uri().path_and_query().unwrap().to_owned();

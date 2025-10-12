@@ -1,15 +1,19 @@
 async function resolveHandler() {
   const mod = await import("func:user-code");
 
-  if (typeof mod.handler === "function") {
-    return mod.handler;
-  }
+  const methods = ["fetch", "handler"];
 
-  if (
-    typeof mod.default === "object" &&
-    typeof mod.default.handler === "function"
-  ) {
-    return mod.default.handler;
+  for (const method of methods) {
+    if (typeof mod[method] === "function") {
+      return mod[method];
+    }
+
+    if (
+      typeof mod.default === "object" &&
+      typeof mod.default[method] === "function"
+    ) {
+      return mod.default[method];
+    }
   }
 
   if (typeof mod.default === "function") {
