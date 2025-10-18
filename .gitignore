@@ -1,5 +1,3 @@
-examples/*/dist/
-wit/deps/
 tmp/
 
 # Created by https://www.toptal.com/developers/gitignore/api/rust,visualstudiocode,macos

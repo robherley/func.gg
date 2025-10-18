@@ -10,7 +10,7 @@ use tokio::time::{Instant, sleep};
 use uuid::Uuid;
 
 use crate::worker::{Worker, WorkerRequest};
-use funcgg_runtime::comms;
+use func_runtime::comms;
 
 #[derive(Debug)]
 pub enum StateChange {

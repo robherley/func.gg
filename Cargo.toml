@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "crates/funcgg-runtime",
-    "crates/funcgg-worker",
+    "crates/func_runtime",
+    "crates/func_worker",
 ]
 resolver = "2"
 

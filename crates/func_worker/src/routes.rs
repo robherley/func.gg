@@ -6,7 +6,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use deno_core::futures::StreamExt;
-use funcgg_runtime::comms;
+use func_runtime::comms;
 use std::sync::Arc;
 use std::{collections::HashMap, convert::Infallible};
 use tokio::sync::{mpsc, oneshot};
@@ -62,7 +62,7 @@ pub async fn invoke(State(pool): State<Arc<Pool>>, request: Request) -> Response
         }
     });
 
-    let req = funcgg_runtime::comms::Request {
+    let req = func_runtime::comms::Request {
         method,
         uri,
         headers,
