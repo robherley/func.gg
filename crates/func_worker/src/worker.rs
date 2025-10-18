@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use super::pool::StateChange;
-use funcgg_runtime::{Sandbox, comms};
+use func_runtime::{Sandbox, comms};
 
 static STARTUP_SNAPSHOT: &[u8] = include_bytes!(env!("SNAPSHOT_PATH"));
 

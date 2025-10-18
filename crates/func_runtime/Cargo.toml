@@ -1,5 +1,5 @@
 [package]
-name = "funcgg-runtime"
+name = "func_runtime"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

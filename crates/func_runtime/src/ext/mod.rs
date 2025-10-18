@@ -17,7 +17,7 @@ mod permissions;
 use permissions::Permissions;
 
 deno_core::extension!(
-    funcgg_runtime,
+    func_ext,
     ops = [
         op_get_request,
         op_set_response,
@@ -26,7 +26,7 @@ deno_core::extension!(
         op_read_request_chunk,
         op_write_response_chunk,
     ],
-    esm_entry_point = "ext:funcgg_runtime/funcgg_entrypoint.js",
+    esm_entry_point = "ext:func_ext/funcgg_entrypoint.js",
     esm = [
         dir "src/ext",
         "deno_webidl.js",
@@ -50,7 +50,7 @@ pub fn extensions() -> Vec<deno_core::Extension> {
         deno_web::init::<Permissions>(Default::default(), None),
         deno_net::init::<Permissions>(None, None),
         deno_fetch::init::<Permissions>(Default::default()),
-        funcgg_runtime::init(),
+        func_ext::init(),
     ]
 }
 
