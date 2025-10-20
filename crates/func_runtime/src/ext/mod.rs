@@ -6,6 +6,7 @@ use deno_telemetry::deno_telemetry;
 use deno_url::deno_url;
 use deno_web::deno_web;
 use deno_webidl::deno_webidl;
+use deno_websocket::deno_websocket;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::vec;
@@ -35,6 +36,7 @@ deno_core::extension!(
         "deno_web.js",
         "deno_net.js",
         "deno_fetch.js",
+        "deno_websocket.js",
         "funcgg_entrypoint.js",
     ],
     state = |state| state.put(Permissions{}),
@@ -50,6 +52,7 @@ pub fn extensions() -> Vec<deno_core::Extension> {
         deno_web::init::<Permissions>(Default::default(), None),
         deno_net::init::<Permissions>(None, None),
         deno_fetch::init::<Permissions>(Default::default()),
+        deno_websocket::init::<Permissions>(),
         func_ext::init(),
     ]
 }

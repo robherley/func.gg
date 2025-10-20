@@ -3,6 +3,7 @@ use ::deno_net::NetPermissions;
 use ::deno_web::TimersPermission;
 use deno_core::url::{Host, Url};
 use deno_permissions::{CheckedPath, OpenAccessKind, PermissionCheckError, PermissionDeniedError};
+use deno_websocket::WebSocketPermissions;
 use std::borrow::Cow;
 use std::net::{IpAddr, ToSocketAddrs};
 use std::path::Path;
@@ -13,12 +14,23 @@ macro_rules! deny {
             PermissionDeniedError {
                 access: $access.to_string(),
                 name: $name,
+                custom_message: None,
             },
         ))
     };
 }
 
 pub struct Permissions {}
+
+impl WebSocketPermissions for Permissions {
+    fn check_net_url(
+        &mut self,
+        _url: &deno_core::url::Url,
+        _api_name: &str,
+    ) -> Result<(), PermissionCheckError> {
+        Ok(())
+    }
+}
 
 impl TimersPermission for Permissions {
     fn allow_hrtime(&mut self) -> bool {
@@ -27,6 +39,15 @@ impl TimersPermission for Permissions {
 }
 
 impl FetchPermissions for Permissions {
+    fn check_net(
+        &mut self,
+        _host: &str,
+        _port: u16,
+        _api_name: &str,
+    ) -> Result<(), PermissionCheckError> {
+        Ok(())
+    }
+
     fn check_net_url(&mut self, url: &Url, api_name: &str) -> Result<(), PermissionCheckError> {
         match url.host() {
             Some(host) => {
@@ -49,7 +70,7 @@ impl FetchPermissions for Permissions {
                             }
                         }
                         Err(err) => {
-                                            tracing::error!("Failed to resolve domain {}: {}", domain, err);
+                            tracing::error!("Failed to resolve domain {}: {}", domain, err);
                             return deny!(api_name, "fetch_net_url");
                         }
                     },

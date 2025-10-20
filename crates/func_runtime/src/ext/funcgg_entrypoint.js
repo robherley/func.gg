@@ -4,6 +4,7 @@ import "ext:func_ext/deno_url.js";
 import "ext:func_ext/deno_web.js";
 import "ext:func_ext/deno_net.js";
 import "ext:func_ext/deno_fetch.js";
+import "ext:func_ext/deno_websocket.js";
 
 const {
   op_get_request,
