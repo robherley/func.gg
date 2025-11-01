@@ -4,7 +4,7 @@ mod server;
 
 use anyhow::Result;
 use std::env;
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -32,7 +32,19 @@ async fn main() -> Result<()> {
     let socket = ipc::Socket::bind(socket_path)?;
     tokio::spawn(async move {
         if let Err(e) = socket.listen().await {
-            tracing::error!("unix socket listener error: {}", e);
+            error!("unix socket listener error: {}", e);
+        }
+    });
+
+    // this needs to wait until the listener is ready
+    let mut proc = runtime::Process::new("/Users/robherley/dev/func.gg/js/handler.ts");
+    tokio::spawn(async move {
+        if let Err(e) = proc.spawn().await {
+            error!("runtime error: {}", e);
+        }
+
+        if let Err(e) = proc.wait().await {
+            error!("runtime error: {}", e);
         }
     });
 

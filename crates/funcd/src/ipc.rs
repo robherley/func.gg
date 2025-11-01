@@ -31,8 +31,8 @@ impl Socket {
 
         loop {
             match self.listener.accept().await {
-                Ok((stream, _addr)) => {
-                    info!("new connection on unix socket");
+                Ok((stream, addr)) => {
+                    info!("new connection on unix socket: {:?}", addr);
 
                     tokio::spawn(async move {
                         let reader = BufReader::new(stream);
