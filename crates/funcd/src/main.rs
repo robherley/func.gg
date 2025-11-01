@@ -1,10 +1,11 @@
-mod server;
 mod ipc;
+mod runtime;
+mod server;
 
+use anyhow::Result;
 use std::env;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use anyhow::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -17,22 +18,24 @@ async fn main() -> Result<()> {
                 .with_file(true),
         )
         .init();
-    
-    let addr = format!(
-        "{}:{}",
-        env::var("HOST").unwrap_or("127.0.0.1".into()),
-        env::var("PORT").unwrap_or("8081".into()),
-    );
-    
-    info!("initializing funcd");
 
-    let socket = ipc::create_socket()?;
+    let http_addr = format!(
+        "{}:{}",
+        env::var("FUNCD_HOST").unwrap_or("127.0.0.1".into()),
+        env::var("FUNCD_PORT").unwrap_or("8081".into()),
+    );
+
+    let socket_path = env::var("FUNCD_SOCKET").unwrap_or("/tmp/funcd.sock".into());
+
+    info!(http_addr = %http_addr, socket_path = %socket_path, "initializing funcd");
+
+    let socket = ipc::Socket::bind(socket_path)?;
     tokio::spawn(async move {
-        if let Err(e) = ipc::listen(socket).await {
+        if let Err(e) = socket.listen().await {
             tracing::error!("unix socket listener error: {}", e);
         }
     });
-    
-    server::serve(&addr).await?;
+
+    server::serve(&http_addr).await?;
     Ok(())
 }

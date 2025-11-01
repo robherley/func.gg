@@ -5,7 +5,7 @@ use tracing::info;
 pub async fn serve(addr: &str) -> Result<()> {
     let router = Router::new().fallback(handler);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    info!(component = "http", addr = &addr, "listening");
+    info!(component = "http", addr = %addr, "listening");
     axum::serve(listener, router).await?;
     Ok(())
 }
