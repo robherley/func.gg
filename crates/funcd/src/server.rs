@@ -2,7 +2,7 @@ use anyhow::Result;
 use axum::Router;
 use tracing::info;
 
-pub async fn serve(addr: &str) -> Result<()> {
+pub async fn serve(addr: &str, _http_port: u16) -> Result<()> {
     let router = Router::new().fallback(handler);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!(component = "http", addr = %addr, "listening");

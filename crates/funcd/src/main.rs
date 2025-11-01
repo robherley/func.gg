@@ -4,6 +4,9 @@ mod server;
 
 use anyhow::Result;
 use std::env;
+use std::time::Duration;
+use tokio::sync::oneshot;
+use tokio::time::timeout;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -29,7 +32,8 @@ async fn main() -> Result<()> {
 
     info!(http_addr = %http_addr, socket_path = %socket_path, "initializing funcd");
 
-    let socket = ipc::Socket::bind(&socket_path)?;
+    let (port_tx, port_rx) = oneshot::channel();
+    let socket = ipc::Socket::bind(&socket_path, port_tx)?;
     tokio::spawn(async move {
         if let Err(e) = socket.listen().await {
             error!("unix socket listener error: {}", e);
@@ -48,6 +52,14 @@ async fn main() -> Result<()> {
         }
     });
 
-    server::serve(&http_addr).await?;
+    let http_port = match timeout(Duration::from_secs(5), port_rx).await {
+        Ok(Ok(port)) => port,
+        Ok(Err(e)) => anyhow::bail!("failed to receive server port: {}", e),
+        Err(_) => anyhow::bail!("timeout waiting for server port"),
+    };
+
+    info!("will proxy requests to port: {}", http_port);
+
+    server::serve(&http_addr, http_port).await?;
     Ok(())
 }
