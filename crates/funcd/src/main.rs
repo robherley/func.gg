@@ -4,7 +4,6 @@ mod ipc;
 use std::env;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-
 use anyhow::Result;
 
 #[tokio::main]

@@ -8,18 +8,18 @@ pub const SOCKET_PATH: &str = "/tmp/funcd.sock";
 
 pub fn create_socket() -> Result<UnixListener> {
     if fs::metadata(SOCKET_PATH).is_ok() {
-        info!("removing existing socket at {}", SOCKET_PATH);
+        info!(socket = SOCKET_PATH, "socket removed");
         fs::remove_file(SOCKET_PATH)?;
     }
     
     let socket = UnixListener::bind(SOCKET_PATH)?;
-    info!("unix socket created at {}", SOCKET_PATH);
+    info!(socket = SOCKET_PATH, "socket created");
     
     Ok(socket)
 }
 
 pub async fn listen(socket: UnixListener) -> Result<()> {
-    info!("socket listening on {}", SOCKET_PATH);
+    info!(component = "unix", addr = SOCKET_PATH, "listening");
     
     loop {
         match socket.accept().await {
