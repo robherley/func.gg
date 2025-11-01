@@ -25,7 +25,7 @@ const socket = await Bun.connect({
   },
 });
 
-const func = await import("../examples/basic.js");
+const func = await import("../examples/streaming.js");
 
 if (!func || !func.default) {
   throw new Error("Func must have a default export");
