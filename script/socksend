@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+SOCKET_PATH="/tmp/funcd.sock"
+
+if [ ! -S "$SOCKET_PATH" ]; then
+    echo "Error: Socket $SOCKET_PATH does not exist" >&2
+    exit 1
+fi
+
+nc -U "$SOCKET_PATH"

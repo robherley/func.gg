@@ -1,4 +1,5 @@
 mod server;
+mod ipc;
 
 use std::env;
 use tracing::info;
@@ -24,7 +25,15 @@ async fn main() -> Result<()> {
         env::var("PORT").unwrap_or("8081".into()),
     );
     
-    info!("funcd starting on {}", &addr);
+    info!("initializing funcd");
+
+    let socket = ipc::create_socket()?;
+    tokio::spawn(async move {
+        if let Err(e) = ipc::listen(socket).await {
+            tracing::error!("unix socket listener error: {}", e);
+        }
+    });
+    
     server::serve(&addr).await?;
     Ok(())
 }
