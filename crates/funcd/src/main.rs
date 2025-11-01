@@ -29,22 +29,22 @@ async fn main() -> Result<()> {
 
     info!(http_addr = %http_addr, socket_path = %socket_path, "initializing funcd");
 
-    let socket = ipc::Socket::bind(socket_path)?;
+    let socket = ipc::Socket::bind(&socket_path)?;
     tokio::spawn(async move {
         if let Err(e) = socket.listen().await {
             error!("unix socket listener error: {}", e);
         }
     });
 
-    // this needs to wait until the listener is ready
-    let mut proc = runtime::Process::new("/Users/robherley/dev/func.gg/js/handler.ts");
+    let mut proc =
+        runtime::Process::new("/Users/robherley/dev/func.gg/js/handler.ts", &socket_path);
     tokio::spawn(async move {
         if let Err(e) = proc.spawn().await {
-            error!("runtime error: {}", e);
+            error!("runtime spawn error: {}", e);
         }
 
         if let Err(e) = proc.wait().await {
-            error!("runtime error: {}", e);
+            error!("runtime wait error: {}", e);
         }
     });
 
