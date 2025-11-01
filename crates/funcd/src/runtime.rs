@@ -10,14 +10,16 @@ const BUN_BINARY_NAME: &str = "bun";
 
 pub struct Process {
     handler_path: PathBuf,
+    script_path: PathBuf,
     socket_path: PathBuf,
     child: Option<Child>,
 }
 
 impl Process {
-    pub fn new<P: AsRef<Path>>(handler_path: P, socket_path: P) -> Self {
+    pub fn new<P: AsRef<Path>>(handler_path: P, script_path: P, socket_path: P) -> Self {
         Self {
             handler_path: handler_path.as_ref().to_path_buf(),
+            script_path: script_path.as_ref().to_path_buf(),
             socket_path: socket_path.as_ref().to_path_buf(),
             child: None,
         }
@@ -36,6 +38,7 @@ impl Process {
         command
             .env_clear()
             .env("FUNCD_SOCKET", &self.socket_path)
+            .env("FUNCD_SCRIPT", &self.script_path)
             .arg("run")
             .arg(&self.handler_path)
             .stdin(Stdio::null())

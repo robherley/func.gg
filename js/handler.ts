@@ -1,7 +1,11 @@
-const { FUNCD_SOCKET } = process.env;
+const { FUNCD_SOCKET, FUNCD_SCRIPT } = process.env;
 
 if (!FUNCD_SOCKET) {
   throw new Error("FUNCD_SOCKET environment variable is not set");
+}
+
+if (!FUNCD_SCRIPT) {
+  throw new Error("FUNC_SCRIPT environment variable is not set");
 }
 
 const socket = await Bun.connect({
@@ -25,7 +29,7 @@ const socket = await Bun.connect({
   },
 });
 
-const func = await import("../examples/streaming.js");
+const func = await import(FUNCD_SCRIPT);
 
 if (!func || !func.default) {
   throw new Error("Func must have a default export");
@@ -37,6 +41,7 @@ if (!func.default.fetch) {
 
 const server = Bun.serve({
   fetch: func.default.fetch,
+  websocket: func.default.websocket,
 });
 
 console.log(`Server started on ${server.hostname}:${server.port}`);

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+PORT=${PORT:-8081}
+
+echo -e "${BLUE}Testing SSE (Server-Sent Events) Handler${NC}"
+echo "======================================"
+echo ""
+
+
+echo -e "${GREEN}Testing HTTP endpoint at http://localhost:${PORT}${NC}"
+curl -s "http://localhost:${PORT}" || true
+echo ""
+echo ""
+
+echo -e "${GREEN}Connecting to SSE stream at http://localhost:${PORT}/events${NC}"
+echo -e "${YELLOW}Receiving events...${NC}"
+echo ""
+
+curl -N -s --max-time 15 "http://localhost:${PORT}/events" | while IFS= read -r line; do
+    if [[ $line == data:* ]]; then
+        json_data="${line#data: }"
+        echo -e "${BLUE}[Event Received]${NC} $json_data"
+    fi
+done || true
+
+echo ""
+echo -e "${GREEN}Test complete!${NC}"

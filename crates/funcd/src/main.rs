@@ -10,6 +10,9 @@ use tokio::time::timeout;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+const HANDLER_PATH: &str = "/Users/robherley/dev/func.gg/js/handler.ts";
+const SCRIPT_PATH: &str = "/Users/robherley/dev/func.gg/examples/websocket.js";
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::registry()
@@ -40,8 +43,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    let mut proc =
-        runtime::Process::new("/Users/robherley/dev/func.gg/js/handler.ts", &socket_path);
+    let mut proc = runtime::Process::new(HANDLER_PATH, SCRIPT_PATH, &socket_path);
     tokio::spawn(async move {
         if let Err(e) = proc.spawn().await {
             error!("runtime spawn error: {}", e);
