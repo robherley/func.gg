@@ -1,10 +1,12 @@
+use anyhow::Result;
 use axum::Router;
 use tracing::info;
 
-pub async fn serve(addr: &str) {
+pub async fn serve(addr: &str) -> Result<()> {
     let router = Router::new().fallback(handler);
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    axum::serve(listener, router).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    axum::serve(listener, router).await?;
+    Ok(())
 }
 
 async fn handler() -> &'static str {

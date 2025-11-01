@@ -4,8 +4,10 @@ use std::env;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use anyhow::Result;
+
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .with(
@@ -22,6 +24,7 @@ async fn main() {
         env::var("PORT").unwrap_or("8081".into()),
     );
     
-    info!("funcd on {}", &addr);
-    server::serve(&addr).await;
+    info!("funcd starting on {}", &addr);
+    server::serve(&addr).await?;
+    Ok(())
 }
