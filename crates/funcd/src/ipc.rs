@@ -62,10 +62,10 @@ impl Socket {
                             match serde_json::from_str::<Message>(&line) {
                                 Ok(msg) => {
                                     info!(message = ?msg, "received message");
-                                    if let Message::Ready { port } = msg {
-                                        if let Some(tx) = port_tx.take() {
-                                            let _ = tx.send(port);
-                                        }
+                                    if let Message::Ready { port } = msg
+                                        && let Some(tx) = port_tx.take()
+                                    {
+                                        let _ = tx.send(port);
                                     }
                                 }
                                 Err(e) => info!(error = %e, "failed to parse message"),

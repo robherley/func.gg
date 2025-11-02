@@ -81,11 +81,11 @@ impl Process {
 
 impl Drop for Process {
     fn drop(&mut self) {
-        if let Some(mut child) = self.child.take() {
-            if let Some(pid) = child.id() {
-                info!(pid, "dropping runtime, killing process");
-                let _ = child.start_kill();
-            }
+        if let Some(mut child) = self.child.take()
+            && let Some(pid) = child.id()
+        {
+            info!(pid, "dropping runtime, killing process");
+            let _ = child.start_kill();
         }
     }
 }
