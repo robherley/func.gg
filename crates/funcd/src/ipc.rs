@@ -2,10 +2,11 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::UnixListener;
 use tokio::sync::oneshot;
-use tracing::info;
+use tracing::{error, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "payload")]
@@ -18,7 +19,7 @@ pub enum Message {
 pub struct Socket {
     path: PathBuf,
     listener: UnixListener,
-    port_tx: Option<oneshot::Sender<u16>>,
+    port_tx: Arc<Mutex<Option<oneshot::Sender<u16>>>>,
 }
 
 impl Socket {
@@ -36,11 +37,11 @@ impl Socket {
         Ok(Self {
             path,
             listener,
-            port_tx: Some(port_tx),
+            port_tx: Arc::new(Mutex::new(Some(port_tx))),
         })
     }
 
-    pub async fn listen(mut self) -> Result<()> {
+    pub async fn listen(self) -> Result<()> {
         info!(
             component = "socket",
             socket = %self.path.display(),
@@ -52,20 +53,18 @@ impl Socket {
                 Ok((stream, _)) => {
                     info!("new connection on unix socket");
 
-                    let port_tx = self.port_tx.take();
+                    let port_tx = Arc::clone(&self.port_tx);
                     tokio::spawn(async move {
                         let reader = BufReader::new(stream);
                         let mut lines = reader.lines();
-                        let mut port_tx = port_tx;
 
                         while let Ok(Some(line)) = lines.next_line().await {
                             match serde_json::from_str::<Message>(&line) {
                                 Ok(msg) => {
-                                    info!(message = ?msg, "received message");
-                                    if let Message::Ready { port } = msg
-                                        && let Some(tx) = port_tx.take()
+                                    if let Err(e) =
+                                        Self::handle_message(Arc::clone(&port_tx), msg).await
                                     {
-                                        let _ = tx.send(port);
+                                        error!(error = %e, "failed to handle message");
                                     }
                                 }
                                 Err(e) => info!(error = %e, "failed to parse message"),
@@ -80,5 +79,25 @@ impl Socket {
                 }
             }
         }
+    }
+
+    pub async fn handle_message(
+        port_tx: Arc<Mutex<Option<oneshot::Sender<u16>>>>,
+        message: Message,
+    ) -> Result<()> {
+        info!(message = ?message, "received message");
+
+        match message {
+            Message::Ping => {}
+            Message::Ready { port } => {
+                if let Ok(mut guard) = port_tx.lock()
+                    && let Some(tx) = guard.take()
+                {
+                    let _ = tx.send(port);
+                }
+            }
+        }
+
+        Ok(())
     }
 }
