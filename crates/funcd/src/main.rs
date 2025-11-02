@@ -61,7 +61,6 @@ async fn main() -> Result<()> {
     };
 
     info!("will proxy requests to port: {}", http_port);
-
-    server::serve(&http_addr, http_port).await?;
+    server::proxy(&http_addr, http_port).await?;
     Ok(())
 }
