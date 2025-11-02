@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+PORT=${PORT:-8081}
+
+echo -e "${BLUE}Testing WebSocket Handler${NC}"
+echo "======================================"
+echo ""
+
+if ! command -v websocat &> /dev/null; then
+    echo -e "${RED}Error: websocat is not installed${NC}"
+    echo "Install it with: cargo install websocat"
+    exit 1
+fi
+
+echo -e "${GREEN}Connecting to ws://localhost:${PORT}/ws${NC}"
+echo ""
+
+websocat "ws://localhost:${PORT}/ws"
