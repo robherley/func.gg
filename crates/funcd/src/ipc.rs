@@ -6,14 +6,15 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::UnixListener;
 use tokio::sync::oneshot;
-use tracing::{error, info};
+use tracing::{info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "payload")]
 #[serde(rename_all = "snake_case")]
 pub enum Message {
-    Ping,
+    Started,
     Ready { port: u16 },
+    Error { error: String },
 }
 
 pub struct Socket {
@@ -23,7 +24,7 @@ pub struct Socket {
 }
 
 impl Socket {
-    pub fn bind<P: AsRef<Path>>(path: P, port_tx: oneshot::Sender<u16>) -> Result<Self> {
+    pub fn bind<P: AsRef<Path>>(path: P, ready_tx: oneshot::Sender<u16>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
 
         if fs::metadata(&path).is_ok() {
@@ -37,7 +38,7 @@ impl Socket {
         Ok(Self {
             path,
             listener,
-            port_tx: Arc::new(Mutex::new(Some(port_tx))),
+            port_tx: Arc::new(Mutex::new(Some(ready_tx))),
         })
     }
 
@@ -60,13 +61,7 @@ impl Socket {
 
                         while let Ok(Some(line)) = lines.next_line().await {
                             match serde_json::from_str::<Message>(&line) {
-                                Ok(msg) => {
-                                    if let Err(e) =
-                                        Self::handle_message(Arc::clone(&port_tx), msg).await
-                                    {
-                                        error!(error = %e, "failed to handle message");
-                                    }
-                                }
+                                Ok(msg) => Self::handle_message(Arc::clone(&port_tx), msg).await,
                                 Err(e) => info!(error = %e, "failed to parse message"),
                             }
                         }
@@ -84,11 +79,11 @@ impl Socket {
     pub async fn handle_message(
         port_tx: Arc<Mutex<Option<oneshot::Sender<u16>>>>,
         message: Message,
-    ) -> Result<()> {
+    ) {
         info!(message = ?message, "received message");
 
         match message {
-            Message::Ping => {}
+            Message::Started => {}
             Message::Ready { port } => {
                 if let Ok(mut guard) = port_tx.lock()
                     && let Some(tx) = guard.take()
@@ -96,8 +91,9 @@ impl Socket {
                     let _ = tx.send(port);
                 }
             }
+            Message::Error { error } => {
+                warn!(error = %error, "error occurred");
+            }
         }
-
-        Ok(())
     }
 }

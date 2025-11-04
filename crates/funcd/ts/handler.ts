@@ -16,7 +16,7 @@ const socket = await Bun.connect({
     },
     open(socket) {
       console.log("[socket] opened");
-      socket.write(JSON.stringify({ kind: "ping" }) + "\n");
+      socket.write(JSON.stringify({ kind: "started" }) + "\n");
     },
     close(socket) {
       console.error("[socket] closed");
@@ -27,6 +27,24 @@ const socket = await Bun.connect({
       process.exit(1);
     },
   },
+});
+
+process.on("uncaughtException", (err) => {
+  socket.write(
+    JSON.stringify({
+      kind: "error",
+      payload: { error: `uncaughtException: ${err}` },
+    }) + "\n",
+  );
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  socket.write(
+    JSON.stringify({
+      kind: "error",
+      payload: { error: `unhandledRejection: ${promise}: ${reason}` },
+    }) + "\n",
+  );
 });
 
 const func = await import(FUNCD_SCRIPT);
