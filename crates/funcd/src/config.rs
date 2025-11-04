@@ -1,3 +1,4 @@
+use anyhow::Result;
 use figment::{
     Figment,
     providers::{Env, Format, Toml},
@@ -74,9 +75,10 @@ impl Default for Config {
     }
 }
 
-pub fn load() -> Result<Config, figment::Error> {
-    Figment::new()
+pub fn load() -> Result<Config> {
+    let cfg = Figment::new()
         .merge(Toml::file("funcd.toml"))
         .merge(Env::prefixed("FUNCD_"))
-        .extract()
+        .extract()?;
+    Ok(cfg)
 }
