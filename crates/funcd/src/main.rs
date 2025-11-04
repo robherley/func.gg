@@ -48,7 +48,10 @@ async fn main() -> Result<()> {
     let func_port = match timeout(cfg.ready_timeout(), ready_rx).await {
         Ok(Ok(port)) => port,
         Ok(Err(e)) => anyhow::bail!("failed to receive server port: {}", e),
-        Err(_) => anyhow::bail!("timeout waiting for server port"),
+        Err(_) => anyhow::bail!(
+            "timeout waiting for server port after {} seconds",
+            cfg.ready_timeout_seconds
+        ),
     };
 
     info!("will proxy requests to port: {}", func_port);
