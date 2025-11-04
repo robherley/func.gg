@@ -1,5 +1,6 @@
 tmp/
 /tmp/funcd.sock
+funcd.toml
 
 # Created by https://www.toptal.com/developers/gitignore/api/rust,go,node,visualstudiocode,macos
 # Edit at https://www.toptal.com/developers/gitignore?templates=rust,go,node,visualstudiocode,macos

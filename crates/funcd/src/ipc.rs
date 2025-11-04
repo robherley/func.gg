@@ -19,11 +19,11 @@ pub enum Message {
 pub struct Socket {
     path: PathBuf,
     listener: UnixListener,
-    port_tx: Arc<Mutex<Option<oneshot::Sender<u16>>>>,
+    ready_tx: Arc<Mutex<Option<oneshot::Sender<u16>>>>,
 }
 
 impl Socket {
-    pub fn bind<P: AsRef<Path>>(path: P, port_tx: oneshot::Sender<u16>) -> Result<Self> {
+    pub fn bind<P: AsRef<Path>>(path: P, ready_tx: oneshot::Sender<u16>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
 
         if fs::metadata(&path).is_ok() {
@@ -37,7 +37,7 @@ impl Socket {
         Ok(Self {
             path,
             listener,
-            port_tx: Arc::new(Mutex::new(Some(port_tx))),
+            ready_tx: Arc::new(Mutex::new(Some(ready_tx))),
         })
     }
 
@@ -53,7 +53,7 @@ impl Socket {
                 Ok((stream, _)) => {
                     info!("new connection on unix socket");
 
-                    let port_tx = Arc::clone(&self.port_tx);
+                    let port_tx = Arc::clone(&self.ready_tx);
                     tokio::spawn(async move {
                         let reader = BufReader::new(stream);
                         let mut lines = reader.lines();
