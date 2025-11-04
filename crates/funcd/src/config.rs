@@ -9,6 +9,9 @@ use std::path::PathBuf;
 use std::time;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+const ENV_PREFIX: &str = "FUNCD_";
+const CONFIG_FILE: &str = "funcd.toml";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -77,8 +80,8 @@ impl Default for Config {
 
 pub fn load() -> Result<Config> {
     let cfg = Figment::new()
-        .merge(Toml::file("funcd.toml"))
-        .merge(Env::prefixed("FUNCD_"))
+        .merge(Toml::file(CONFIG_FILE))
+        .merge(Env::prefixed(ENV_PREFIX))
         .extract()?;
     Ok(cfg)
 }
