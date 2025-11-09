@@ -47,14 +47,26 @@ async fn main() -> Result<()> {
     info!(dur = ?start.elapsed(), "runtime ready");
 
     let proxy = Arc::new(server::Proxy::new("localhost".to_string(), upstream_port));
-    info!(upstream = proxy.upstream, "initializing proxy");
+    info!(
+        upstream = proxy.upstream,
+        streaming = cfg.enable_streaming,
+        "initializing proxy"
+    );
 
-    lambda_http::run(lambda_http::service_fn(move |req| {
-        let proxy = Arc::clone(&proxy);
-        async move { proxy.handle(req).await }
-    }))
-    .await
-    .map_err(|e| anyhow::anyhow!("lambda runtime error: {}", e))?;
+    let res = if cfg.enable_streaming {
+        let svc_fn = lambda_http::service_fn(move |req| {
+            let proxy = Arc::clone(&proxy);
+            async move { proxy.handle_stream(req).await }
+        });
+        lambda_http::run_with_streaming_response(svc_fn).await
+    } else {
+        let svc_fn = lambda_http::service_fn(move |req| {
+            let proxy = Arc::clone(&proxy);
+            async move { proxy.handle(req).await }
+        });
+        lambda_http::run(svc_fn).await
+    };
 
+    res.map_err(|e| anyhow::anyhow!("lambda runtime error: {}", e))?;
     Ok(())
 }

@@ -14,10 +14,47 @@ impl Proxy {
         }
     }
 
+    pub async fn handle_stream(
+        &self,
+        req: http::Request<lambda_http::Body>,
+    ) -> Result<http::Response<lambda_http::Body>, lambda_http::Error> {
+        // TODO: implement
+        // maybe switch to axum
+        self.handle(req).await
+    }
+
     pub async fn handle(
         &self,
         req: http::Request<lambda_http::Body>,
     ) -> Result<http::Response<lambda_http::Body>, lambda_http::Error> {
+        let upstream_req = self.build_reqwest(req).await?;
+
+        let upstream_resp = upstream_req
+            .send()
+            .await
+            .map_err(|e| lambda_http::Error::from(format!("upstream request failed: {}", e)))?;
+
+        let mut response_builder = http::Response::builder().status(upstream_resp.status());
+
+        for (name, value) in upstream_resp.headers().iter() {
+            response_builder = response_builder.header(name, value);
+        }
+
+        let body_bytes = upstream_resp.bytes().await.map_err(|e| {
+            lambda_http::Error::from(format!("failed to read response body: {}", e))
+        })?;
+
+        let response = response_builder
+            .body(lambda_http::Body::from(body_bytes.as_ref()))
+            .map_err(|e| lambda_http::Error::from(e))?;
+
+        Ok(response)
+    }
+
+    async fn build_reqwest(
+        &self,
+        req: http::Request<lambda_http::Body>,
+    ) -> Result<reqwest::RequestBuilder, lambda_http::Error> {
         let (parts, body) = req.into_parts();
 
         let body_bytes = body
@@ -47,26 +84,7 @@ impl Proxy {
             }
         }
 
-        let upstream_resp = upstream_req
-            .send()
-            .await
-            .map_err(|e| lambda_http::Error::from(format!("upstream request failed: {}", e)))?;
-
-        let mut response_builder = http::Response::builder().status(upstream_resp.status());
-
-        for (name, value) in upstream_resp.headers().iter() {
-            response_builder = response_builder.header(name, value);
-        }
-
-        let body_bytes = upstream_resp.bytes().await.map_err(|e| {
-            lambda_http::Error::from(format!("failed to read response body: {}", e))
-        })?;
-
-        let response = response_builder
-            .body(lambda_http::Body::from(body_bytes.as_ref()))
-            .map_err(|e| lambda_http::Error::from(e))?;
-
-        Ok(response)
+        Ok(upstream_req)
     }
 }
 
