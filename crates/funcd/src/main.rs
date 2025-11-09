@@ -49,14 +49,14 @@ async fn main() -> Result<()> {
     let proxy = Arc::new(server::Proxy::new("localhost".to_string(), upstream_port));
     info!(
         upstream = proxy.upstream,
-        streaming = cfg.enable_streaming,
+        streaming = cfg.response_streaming,
         "initializing proxy"
     );
 
-    let res = if cfg.enable_streaming {
+    let res = if cfg.response_streaming {
         let svc_fn = lambda_http::service_fn(move |req| {
             let proxy = Arc::clone(&proxy);
-            async move { proxy.handle_stream(req).await }
+            async move { proxy.handle_with_streaming_response(req).await }
         });
         lambda_http::run_with_streaming_response(svc_fn).await
     } else {

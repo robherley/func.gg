@@ -33,7 +33,7 @@ pub struct Config {
     pub bun_path: Option<PathBuf>,
 
     /// Enable response streaming
-    pub enable_streaming: bool,
+    pub response_streaming: bool,
 }
 
 impl Config {
@@ -64,7 +64,7 @@ impl Default for Config {
             socket_path: PathBuf::from("/tmp/funcd.sock"),
             ready_timeout_seconds: 5,
             bun_path: None,
-            enable_streaming: false,
+            response_streaming: false,
         }
     }
 }

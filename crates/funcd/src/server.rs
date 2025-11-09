@@ -1,5 +1,7 @@
 use anyhow::Result;
 use http_body_util::BodyExt;
+use tokio_stream::StreamExt;
+use tracing::error;
 
 pub struct Proxy {
     client: reqwest::Client,
@@ -14,13 +16,46 @@ impl Proxy {
         }
     }
 
-    pub async fn handle_stream(
+    pub async fn handle_with_streaming_response(
         &self,
         req: http::Request<lambda_http::Body>,
-    ) -> Result<http::Response<lambda_http::Body>, lambda_http::Error> {
-        // TODO: implement
-        // maybe switch to axum
-        self.handle(req).await
+    ) -> Result<http::Response<lambda_runtime::streaming::Body>, lambda_http::Error> {
+        let upstream_req = self.build_reqwest(req).await?;
+
+        let upstream_resp = upstream_req
+            .send()
+            .await
+            .map_err(|e| lambda_http::Error::from(format!("upstream request failed: {}", e)))?;
+
+        let mut response_builder = http::Response::builder().status(upstream_resp.status());
+
+        for (name, value) in upstream_resp.headers().iter() {
+            response_builder = response_builder.header(name, value);
+        }
+
+        let (mut tx, rx) = lambda_runtime::streaming::channel();
+        let mut body_stream = upstream_resp.bytes_stream();
+        tokio::spawn(async move {
+            while let Some(chunk) = body_stream.next().await {
+                match chunk {
+                    Ok(chunk) => {
+                        if tx.send_data(chunk).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(err) => {
+                        error!("upstream response body read failed: {}", err);
+                        break;
+                    }
+                }
+            }
+        });
+
+        let response = response_builder
+            .body(rx)
+            .map_err(|e| lambda_http::Error::from(e))?;
+
+        Ok(response)
     }
 
     pub async fn handle(
@@ -45,7 +80,7 @@ impl Proxy {
         })?;
 
         let response = response_builder
-            .body(lambda_http::Body::from(body_bytes.as_ref()))
+            .body(body_bytes.as_ref().into())
             .map_err(|e| lambda_http::Error::from(e))?;
 
         Ok(response)
