@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+cargo lambda build \
+    --bin funcd \
+    --release \
+    --arm64 \
+    -o zip \
+    -l out/

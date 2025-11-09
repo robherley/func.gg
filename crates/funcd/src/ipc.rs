@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::UnixListener;
 use tokio::sync::oneshot;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "payload")]
@@ -28,12 +28,12 @@ impl Socket {
         let path = path.as_ref().to_path_buf();
 
         if fs::metadata(&path).is_ok() {
-            info!(socket = %path.display(), "removing existing socket");
+            debug!(socket = %path.display(), "removing existing socket");
             fs::remove_file(&path)?;
         }
 
         let listener = UnixListener::bind(&path)?;
-        info!(socket = %path.display(), "socket created");
+        debug!(socket = %path.display(), "socket created");
 
         Ok(Self {
             path,

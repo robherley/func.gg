@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+cargo lambda watch \
+    --bin funcd

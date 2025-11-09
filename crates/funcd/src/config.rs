@@ -1,10 +1,9 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use figment::{
     Figment,
     providers::{Env, Format, Toml},
 };
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::time;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -27,12 +26,6 @@ pub struct Config {
     /// Unix socket path for IPC
     pub socket_path: PathBuf,
 
-    /// HTTP server host
-    pub http_host: IpAddr,
-
-    /// HTTP server port
-    pub http_port: u16,
-
     /// Timeout in seconds for waiting for the runtime process to be ready
     pub ready_timeout_seconds: u64,
 
@@ -41,10 +34,6 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn http_addr(&self) -> SocketAddr {
-        SocketAddr::new(self.http_host, self.http_port)
-    }
-
     pub fn ready_timeout(&self) -> time::Duration {
         time::Duration::from_secs(self.ready_timeout_seconds)
     }
@@ -70,8 +59,6 @@ impl Default for Config {
             handler_path: PathBuf::from("/tmp/handler.ts"),
             script_path: PathBuf::from("/tmp/script.ts"),
             socket_path: PathBuf::from("/tmp/funcd.sock"),
-            http_host: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-            http_port: 8080,
             ready_timeout_seconds: 5,
             bun_path: None,
         }
@@ -84,4 +71,10 @@ pub fn load() -> Result<Config> {
         .merge(Env::prefixed(ENV_PREFIX))
         .extract()?;
     Ok(cfg)
+}
+
+pub fn install_crypto() -> Result<()> {
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .map_err(|e| anyhow!("Can't set crypto provider: {:?}", e))
 }
