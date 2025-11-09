@@ -42,7 +42,7 @@ impl Proxy {
             .body(body_bytes);
 
         for (name, value) in parts.headers.iter() {
-            if name != http::header::HOST {
+            if include_header(&name) {
                 upstream_req = upstream_req.header(name, value);
             }
         }
@@ -67,5 +67,14 @@ impl Proxy {
             .map_err(|e| lambda_http::Error::from(e))?;
 
         Ok(response)
+    }
+}
+
+fn include_header(name: &http::HeaderName) -> bool {
+    let name_str = name.as_str();
+    match name {
+        &http::header::HOST => false,
+        _ if name_str.starts_with("x-amzn") => false,
+        _ => true,
     }
 }

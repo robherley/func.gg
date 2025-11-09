@@ -59,10 +59,8 @@ if (!func.default.fetch) {
 
 const server = Bun.serve({
   fetch: func.default.fetch,
-  websocket: func.default.websocket,
 });
 
-console.log(`Server started on ${server.hostname}:${server.port}`);
 socket.write(
   JSON.stringify({ kind: "ready", payload: { port: server.port } }) + "\n",
 );

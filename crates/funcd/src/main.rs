@@ -23,16 +23,13 @@ async fn main() -> Result<()> {
         }
     });
 
-    let mut proc = runtime::Process::new(
-        &cfg.handler_path,
-        &cfg.script_path,
-        &cfg.socket_path,
-        cfg.bun_path.as_ref(),
-    );
+    let start = tokio::time::Instant::now();
+    let mut proc = runtime::Process::new((&cfg).into());
     tokio::spawn(async move {
         if let Err(e) = proc.spawn().await {
             error!("runtime spawn error: {}", e);
         }
+        info!(dur = ?start.elapsed(), "runtime spawned");
 
         if let Err(e) = proc.wait().await {
             error!("runtime wait error: {}", e);
@@ -47,9 +44,9 @@ async fn main() -> Result<()> {
             cfg.ready_timeout_seconds
         ),
     };
+    info!(dur = ?start.elapsed(), "runtime ready");
 
     let proxy = Arc::new(server::Proxy::new("localhost".to_string(), upstream_port));
-
     info!(upstream = proxy.upstream, "initializing proxy");
 
     lambda_http::run(lambda_http::service_fn(move |req| {
