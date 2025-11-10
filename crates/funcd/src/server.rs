@@ -53,7 +53,7 @@ impl Proxy {
 
         let response = response_builder
             .body(rx)
-            .map_err(|e| lambda_http::Error::from(e))?;
+            .map_err(lambda_http::Error::from)?;
 
         Ok(response)
     }
@@ -81,7 +81,7 @@ impl Proxy {
 
         let response = response_builder
             .body(body_bytes.as_ref().into())
-            .map_err(|e| lambda_http::Error::from(e))?;
+            .map_err(lambda_http::Error::from)?;
 
         Ok(response)
     }
@@ -114,7 +114,7 @@ impl Proxy {
             .body(body_bytes);
 
         for (name, value) in parts.headers.iter() {
-            if include_header(&name) {
+            if include_header(name) {
                 upstream_req = upstream_req.header(name, value);
             }
         }
