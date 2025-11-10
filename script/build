@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 
+set -euo pipefail
+
 cargo lambda build \
     --bin funcd \
     --release \
     --arm64 \
     -o zip \
+    -i examples/ \
+    -i crates/funcd/ts/ \
     -l out/
+
+unzip -l "out/funcd/bootstrap.zip"

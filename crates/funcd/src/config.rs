@@ -17,20 +17,11 @@ pub struct Config {
     /// Log directive for the application, analogous to RUST_LOG
     pub log: String,
 
-    /// Path to the handler TypeScript file
-    pub handler_path: PathBuf,
-
-    /// Path to the user script file
-    pub script_path: PathBuf,
-
-    /// Unix socket path for IPC
-    pub socket_path: PathBuf,
+    /// Runtime paths to sockets, binaries and scripts
+    pub paths: Paths,
 
     /// Timeout in seconds for waiting for the runtime process to be ready
     pub ready_timeout_seconds: u64,
-
-    /// Explicit path to the bun binary
-    pub bun_path: Option<PathBuf>,
 
     /// Enable response streaming
     pub response_streaming: bool,
@@ -59,12 +50,29 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             log: "info".to_string(),
-            handler_path: PathBuf::from("/tmp/handler.ts"),
-            script_path: PathBuf::from("/tmp/script.ts"),
-            socket_path: PathBuf::from("/tmp/funcd.sock"),
             ready_timeout_seconds: 5,
-            bun_path: None,
             response_streaming: false,
+            paths: Paths::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Paths {
+    pub bun: PathBuf,
+    pub socket: PathBuf,
+    pub entry_point: PathBuf,
+    pub user_script: PathBuf,
+}
+
+impl Default for Paths {
+    fn default() -> Self {
+        Self {
+            bun: PathBuf::from("/opt/bun"),
+            socket: PathBuf::from("/tmp/funcd.sock"),
+            entry_point: PathBuf::from("/var/task/entry_point.ts"),
+            user_script: PathBuf::from("/var/task/user_script.ts"),
         }
     }
 }
@@ -74,11 +82,12 @@ pub fn load() -> Result<Config> {
         .merge(Toml::file(CONFIG_FILE))
         .merge(Env::prefixed(ENV_PREFIX))
         .extract()?;
+
     Ok(cfg)
 }
 
 pub fn install_crypto() -> Result<()> {
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
-        .map_err(|e| anyhow!("Can't set crypto provider: {:?}", e))
+        .map_err(|e| anyhow!("unable to set crypto provider: {:?}", e))
 }

@@ -1,30 +1,9 @@
 use anyhow::{Context, Result};
-use std::env;
-use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::process::{Child, Command};
 use tracing::{info, warn};
 
-use crate::config::Config;
-
-pub struct Paths {
-    pub handler: PathBuf,
-    pub script: PathBuf,
-    pub socket: PathBuf,
-    pub bun: Option<PathBuf>,
-}
-
-impl From<&Config> for Paths {
-    fn from(config: &Config) -> Self {
-        Self {
-            handler: config.handler_path.clone(),
-            script: config.script_path.clone(),
-            socket: config.socket_path.clone(),
-            bun: config.bun_path.clone(),
-        }
-    }
-}
+use crate::config::Paths;
 
 pub struct Process {
     paths: Paths,
@@ -42,18 +21,13 @@ impl Process {
             return Ok(());
         }
 
-        let bun_path = match self.paths.bun {
-            Some(ref path) => path.clone(),
-            None => which("bun").ok_or_else(|| anyhow::anyhow!("Unable to find executable"))?,
-        };
-
-        let mut command = Command::new(bun_path);
+        let mut command = Command::new(self.paths.bun.clone());
         command
             .env_clear()
             .env("FUNCD_SOCKET", &self.paths.socket)
-            .env("FUNCD_SCRIPT", &self.paths.script)
+            .env("FUNCD_SCRIPT", &self.paths.user_script)
             .arg("run")
-            .arg(&self.paths.handler)
+            .arg(&self.paths.entry_point)
             .stdin(Stdio::null())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
@@ -101,20 +75,4 @@ impl Drop for Process {
             let _ = child.start_kill();
         }
     }
-}
-
-fn which(bin: &str) -> Option<PathBuf> {
-    let paths = env::var_os("PATH")?;
-    for dir in env::split_paths(&paths) {
-        let candidate = dir.join(bin);
-        if candidate.is_file()
-            && candidate
-                .metadata()
-                .map(|m| m.permissions().mode() & 0o111 != 0)
-                .unwrap_or(false)
-        {
-            return Some(candidate);
-        }
-    }
-    None
 }

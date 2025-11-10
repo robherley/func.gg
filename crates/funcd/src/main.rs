@@ -16,7 +16,7 @@ async fn main() -> Result<()> {
     cfg.init_tracing();
 
     let (ready_tx, ready_rx) = oneshot::channel();
-    let socket = ipc::Socket::bind(&cfg.socket_path, ready_tx)?;
+    let socket = ipc::Socket::bind(&cfg.paths.socket, ready_tx)?;
     tokio::spawn(async move {
         if let Err(e) = socket.listen().await {
             error!("unix socket listener error: {}", e);
@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
     });
 
     let start = tokio::time::Instant::now();
-    let mut proc = runtime::Process::new((&cfg).into());
+    let mut proc = runtime::Process::new(cfg.paths.clone());
     tokio::spawn(async move {
         if let Err(e) = proc.spawn().await {
             error!("runtime spawn error: {}", e);
