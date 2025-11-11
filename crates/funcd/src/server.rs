@@ -19,13 +19,33 @@ impl Proxy {
         &self,
         req: http::Request<lambda_http::Body>,
     ) -> Result<http::Response<lambda_runtime::streaming::Body>, lambda_http::Error> {
-        let upstream_req = self.build_reqwest(req).await?;
+        let upstream_resp = self.send_upstream_request(req).await?;
+        self.build_streaming_response(upstream_resp).await
+    }
 
-        let upstream_resp = upstream_req
+    pub async fn handle(
+        &self,
+        req: http::Request<lambda_http::Body>,
+    ) -> Result<http::Response<lambda_http::Body>, lambda_http::Error> {
+        let upstream_resp = self.send_upstream_request(req).await?;
+        self.build_response(upstream_resp).await
+    }
+
+    async fn send_upstream_request(
+        &self,
+        req: http::Request<lambda_http::Body>,
+    ) -> Result<reqwest::Response, lambda_http::Error> {
+        let upstream_req = self.build_reqwest(req).await?;
+        upstream_req
             .send()
             .await
-            .map_err(|e| lambda_http::Error::from(format!("upstream request failed: {}", e)))?;
+            .map_err(|e| lambda_http::Error::from(format!("upstream request failed: {}", e)))
+    }
 
+    async fn build_streaming_response(
+        &self,
+        upstream_resp: reqwest::Response,
+    ) -> Result<http::Response<lambda_runtime::streaming::Body>, lambda_http::Error> {
         let mut response_builder = http::Response::builder().status(upstream_resp.status());
 
         for (name, value) in upstream_resp.headers().iter() {
@@ -57,17 +77,10 @@ impl Proxy {
         Ok(response)
     }
 
-    pub async fn handle(
+    async fn build_response(
         &self,
-        req: http::Request<lambda_http::Body>,
+        upstream_resp: reqwest::Response,
     ) -> Result<http::Response<lambda_http::Body>, lambda_http::Error> {
-        let upstream_req = self.build_reqwest(req).await?;
-
-        let upstream_resp = upstream_req
-            .send()
-            .await
-            .map_err(|e| lambda_http::Error::from(format!("upstream request failed: {}", e)))?;
-
         let mut response_builder = http::Response::builder().status(upstream_resp.status());
 
         for (name, value) in upstream_resp.headers().iter() {
