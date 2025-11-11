@@ -26,7 +26,7 @@ impl Process {
             .env_clear()
             .env("FUNCD_MSG_SOCKET", &self.paths.msg_socket)
             .env("FUNCD_HTTP_SOCKET", &self.paths.http_socket)
-            .env("FUNCD_SCRIPT", &self.paths.user_script)
+            .env("FUNCD_USER_SCRIPT", &self.paths.user_script)
             .arg("run")
             .arg(&self.paths.entry_point)
             .stdin(Stdio::null())

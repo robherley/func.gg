@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
         Ok(Ok(_)) => {}
         Ok(Err(e)) => anyhow::bail!("failed to start runtime: {}", e),
         Err(_) => anyhow::bail!(
-            "timeout waiting for server port after {} seconds",
+            "timeout waiting for server to be ready after {} seconds",
             cfg.ready_timeout_seconds
         ),
     };

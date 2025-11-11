@@ -125,10 +125,9 @@ impl Proxy {
 }
 
 fn include_header(name: &http::HeaderName) -> bool {
-    let name_str = name.as_str();
     match name {
         &http::header::HOST => false,
-        _ if name_str.starts_with("x-amzn") => false,
+        _ if name.as_str().starts_with("x-amzn") => false,
         _ => true,
     }
 }
