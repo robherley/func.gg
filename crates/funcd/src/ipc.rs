@@ -6,34 +6,34 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::UnixListener;
 use tokio::sync::oneshot;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "payload")]
 #[serde(rename_all = "snake_case")]
 pub enum Message {
     Started,
-    Ready { port: u16 },
+    Ready,
     Error { error: String },
 }
 
 pub struct Socket {
     path: PathBuf,
     listener: UnixListener,
-    port_tx: Arc<Mutex<Option<oneshot::Sender<u16>>>>,
+    port_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
 }
 
 impl Socket {
-    pub fn bind<P: AsRef<Path>>(path: P, ready_tx: oneshot::Sender<u16>) -> Result<Self> {
+    pub fn bind<P: AsRef<Path>>(path: P, ready_tx: oneshot::Sender<()>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
 
         if fs::metadata(&path).is_ok() {
-            info!(socket = %path.display(), "removing existing socket");
+            debug!(socket = %path.display(), "removing existing socket");
             fs::remove_file(&path)?;
         }
 
         let listener = UnixListener::bind(&path)?;
-        info!(socket = %path.display(), "socket created");
+        debug!(socket = %path.display(), "socket created");
 
         Ok(Self {
             path,
@@ -77,18 +77,18 @@ impl Socket {
     }
 
     pub async fn handle_message(
-        port_tx: Arc<Mutex<Option<oneshot::Sender<u16>>>>,
+        port_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
         message: Message,
     ) {
         info!(message = ?message, "received message");
 
         match message {
             Message::Started => {}
-            Message::Ready { port } => {
+            Message::Ready => {
                 if let Ok(mut guard) = port_tx.lock()
                     && let Some(tx) = guard.take()
                 {
-                    let _ = tx.send(port);
+                    let _ = tx.send(());
                 }
             }
             Message::Error { error } => {

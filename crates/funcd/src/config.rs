@@ -1,10 +1,9 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use figment::{
     Figment,
     providers::{Env, Format, Toml},
 };
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::time;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -18,33 +17,17 @@ pub struct Config {
     /// Log directive for the application, analogous to RUST_LOG
     pub log: String,
 
-    /// Path to the handler TypeScript file
-    pub handler_path: PathBuf,
-
-    /// Path to the user script file
-    pub script_path: PathBuf,
-
-    /// Unix socket path for IPC
-    pub socket_path: PathBuf,
-
-    /// HTTP server host
-    pub http_host: IpAddr,
-
-    /// HTTP server port
-    pub http_port: u16,
+    /// Runtime paths to sockets, binaries and scripts
+    pub paths: Paths,
 
     /// Timeout in seconds for waiting for the runtime process to be ready
     pub ready_timeout_seconds: u64,
 
-    /// Explicit path to the bun binary
-    pub bun_path: Option<PathBuf>,
+    /// Enable response streaming
+    pub response_streaming: bool,
 }
 
 impl Config {
-    pub fn http_addr(&self) -> SocketAddr {
-        SocketAddr::new(self.http_host, self.http_port)
-    }
-
     pub fn ready_timeout(&self) -> time::Duration {
         time::Duration::from_secs(self.ready_timeout_seconds)
     }
@@ -67,13 +50,31 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             log: "info".to_string(),
-            handler_path: PathBuf::from("/tmp/handler.ts"),
-            script_path: PathBuf::from("/tmp/script.ts"),
-            socket_path: PathBuf::from("/tmp/funcd.sock"),
-            http_host: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-            http_port: 8080,
             ready_timeout_seconds: 5,
-            bun_path: None,
+            response_streaming: false,
+            paths: Paths::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Paths {
+    pub bun: PathBuf,
+    pub msg_socket: PathBuf,
+    pub http_socket: PathBuf,
+    pub entry_point: PathBuf,
+    pub user_script: PathBuf,
+}
+
+impl Default for Paths {
+    fn default() -> Self {
+        Self {
+            bun: PathBuf::from("/opt/bun"),
+            msg_socket: PathBuf::from("/tmp/funcd.msg.sock"),
+            http_socket: PathBuf::from("/tmp/funcd.http.sock"),
+            entry_point: PathBuf::from("/var/task/entry_point.ts"),
+            user_script: PathBuf::from("/var/task/user_script.ts"),
         }
     }
 }
@@ -83,5 +84,12 @@ pub fn load() -> Result<Config> {
         .merge(Toml::file(CONFIG_FILE))
         .merge(Env::prefixed(ENV_PREFIX))
         .extract()?;
+
     Ok(cfg)
+}
+
+pub fn install_crypto() -> Result<()> {
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .map_err(|e| anyhow!("unable to set crypto provider: {:?}", e))
 }

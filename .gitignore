@@ -1,4 +1,6 @@
 tmp/
+bin/
+out/
 /tmp/funcd.sock
 funcd.toml
 

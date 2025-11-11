@@ -1,15 +1,19 @@
-const { FUNCD_SOCKET, FUNCD_SCRIPT } = process.env;
+const { FUNCD_MSG_SOCKET, FUNCD_HTTP_SOCKET, FUNCD_USER_SCRIPT } = process.env;
 
-if (!FUNCD_SOCKET) {
-  throw new Error("FUNCD_SOCKET environment variable is not set");
+if (!FUNCD_MSG_SOCKET) {
+  throw new Error("FUNCD_MSG_SOCKET is not defined");
 }
 
-if (!FUNCD_SCRIPT) {
-  throw new Error("FUNC_SCRIPT environment variable is not set");
+if (!FUNCD_HTTP_SOCKET) {
+  throw new Error("FUNCD_HTTP_SOCKET is not defined");
+}
+
+if (!FUNCD_USER_SCRIPT) {
+  throw new Error("FUNCD_USER_SCRIPT is not defined");
 }
 
 const socket = await Bun.connect({
-  unix: FUNCD_SOCKET,
+  unix: FUNCD_MSG_SOCKET,
   socket: {
     data(socket, data) {
       console.log("[socket] data", data);
@@ -47,7 +51,7 @@ process.on("unhandledRejection", (reason, promise) => {
   );
 });
 
-const func = await import(FUNCD_SCRIPT);
+const func = await import(FUNCD_USER_SCRIPT);
 
 if (!func || !func.default) {
   throw new Error("Func must have a default export");
@@ -57,12 +61,9 @@ if (!func.default.fetch) {
   throw new Error("Func must export a fetch function");
 }
 
-const server = Bun.serve({
+Bun.serve({
+  unix: FUNCD_HTTP_SOCKET,
   fetch: func.default.fetch,
-  websocket: func.default.websocket,
 });
 
-console.log(`Server started on ${server.hostname}:${server.port}`);
-socket.write(
-  JSON.stringify({ kind: "ready", payload: { port: server.port } }) + "\n",
-);
+socket.write(JSON.stringify({ kind: "ready" }) + "\n");

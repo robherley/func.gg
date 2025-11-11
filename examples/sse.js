@@ -40,7 +40,6 @@ export default {
             );
           }, 1000);
 
-          // Cleanup on abort
           req.signal?.addEventListener("abort", () => {
             console.log("[sse] client disconnected");
             clearInterval(interval);
@@ -58,7 +57,6 @@ export default {
       });
     }
 
-    // Regular HTTP endpoint with instructions
     return new Response(
       "SSE server running.\n\nConnect to /events to receive server-sent events.\nExample: curl -N http://localhost:PORT/events\n",
       {

@@ -1,33 +1,18 @@
 use anyhow::{Context, Result};
-use std::env;
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::{Child, Command};
 use tracing::{info, warn};
 
+use crate::config::Paths;
+
 pub struct Process {
-    handler_path: PathBuf,
-    script_path: PathBuf,
-    socket_path: PathBuf,
-    bun_path: Option<PathBuf>,
+    paths: Paths,
     child: Option<Child>,
 }
 
 impl Process {
-    pub fn new<P: AsRef<Path>>(
-        handler_path: P,
-        script_path: P,
-        socket_path: P,
-        bun_path: Option<P>,
-    ) -> Self {
-        Self {
-            handler_path: handler_path.as_ref().to_path_buf(),
-            script_path: script_path.as_ref().to_path_buf(),
-            socket_path: socket_path.as_ref().to_path_buf(),
-            bun_path: bun_path.map(|p| p.as_ref().to_path_buf()),
-            child: None,
-        }
+    pub fn new(paths: Paths) -> Self {
+        Self { paths, child: None }
     }
 
     pub async fn spawn(&mut self) -> Result<()> {
@@ -36,18 +21,14 @@ impl Process {
             return Ok(());
         }
 
-        let bun_path = match self.bun_path {
-            Some(ref path) => path.clone(),
-            None => which("bun").ok_or_else(|| anyhow::anyhow!("Unable to find executable"))?,
-        };
-
-        let mut command = Command::new(bun_path);
+        let mut command = Command::new(self.paths.bun.clone());
         command
             .env_clear()
-            .env("FUNCD_SOCKET", &self.socket_path)
-            .env("FUNCD_SCRIPT", &self.script_path)
+            .env("FUNCD_MSG_SOCKET", &self.paths.msg_socket)
+            .env("FUNCD_HTTP_SOCKET", &self.paths.http_socket)
+            .env("FUNCD_USER_SCRIPT", &self.paths.user_script)
             .arg("run")
-            .arg(&self.handler_path)
+            .arg(&self.paths.entry_point)
             .stdin(Stdio::null())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
@@ -95,20 +76,4 @@ impl Drop for Process {
             let _ = child.start_kill();
         }
     }
-}
-
-fn which(bin: &str) -> Option<PathBuf> {
-    let paths = env::var_os("PATH")?;
-    for dir in env::split_paths(&paths) {
-        let candidate = dir.join(bin);
-        if candidate.is_file()
-            && candidate
-                .metadata()
-                .map(|m| m.permissions().mode() & 0o111 != 0)
-                .unwrap_or(false)
-        {
-            return Some(candidate);
-        }
-    }
-    None
 }
