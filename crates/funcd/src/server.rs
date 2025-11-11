@@ -91,11 +91,7 @@ impl Proxy {
     ) -> Result<reqwest::RequestBuilder, lambda_http::Error> {
         let (parts, body) = req.into_parts();
 
-        let body_bytes = body
-            .collect()
-            .await
-            .map_err(lambda_http::Error::from)?
-            .to_bytes();
+        let body_bytes = body.collect().await?.to_bytes();
 
         let host = parts
             .headers
