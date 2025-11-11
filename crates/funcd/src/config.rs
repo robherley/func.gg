@@ -61,7 +61,8 @@ impl Default for Config {
 #[serde(default)]
 pub struct Paths {
     pub bun: PathBuf,
-    pub socket: PathBuf,
+    pub msg_socket: PathBuf,
+    pub http_socket: PathBuf,
     pub entry_point: PathBuf,
     pub user_script: PathBuf,
 }
@@ -70,7 +71,8 @@ impl Default for Paths {
     fn default() -> Self {
         Self {
             bun: PathBuf::from("/opt/bun"),
-            socket: PathBuf::from("/tmp/funcd.sock"),
+            msg_socket: PathBuf::from("/tmp/funcd.msg.sock"),
+            http_socket: PathBuf::from("/tmp/funcd.http.sock"),
             entry_point: PathBuf::from("/var/task/entry_point.ts"),
             user_script: PathBuf::from("/var/task/user_script.ts"),
         }

@@ -24,7 +24,8 @@ impl Process {
         let mut command = Command::new(self.paths.bun.clone());
         command
             .env_clear()
-            .env("FUNCD_SOCKET", &self.paths.socket)
+            .env("FUNCD_MSG_SOCKET", &self.paths.msg_socket)
+            .env("FUNCD_HTTP_SOCKET", &self.paths.http_socket)
             .env("FUNCD_SCRIPT", &self.paths.user_script)
             .arg("run")
             .arg(&self.paths.entry_point)

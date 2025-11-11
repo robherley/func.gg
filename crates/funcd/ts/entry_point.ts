@@ -1,15 +1,19 @@
-const { FUNCD_SOCKET, FUNCD_SCRIPT } = process.env;
+const { FUNCD_MSG_SOCKET, FUNCD_HTTP_SOCKET, FUNCD_SCRIPT } = process.env;
 
-if (!FUNCD_SOCKET) {
-  throw new Error("FUNCD_SOCKET environment variable is not set");
+if (!FUNCD_MSG_SOCKET) {
+  throw new Error("FUNCD_MSG_SOCKET is not defined");
+}
+
+if (!FUNCD_HTTP_SOCKET) {
+  throw new Error("FUNCD_HTTP_SOCKET is not defined");
 }
 
 if (!FUNCD_SCRIPT) {
-  throw new Error("FUNC_SCRIPT environment variable is not set");
+  throw new Error("FUNCD_SCRIPT is not defined");
 }
 
 const socket = await Bun.connect({
-  unix: FUNCD_SOCKET,
+  unix: FUNCD_MSG_SOCKET,
   socket: {
     data(socket, data) {
       console.log("[socket] data", data);
@@ -58,9 +62,8 @@ if (!func.default.fetch) {
 }
 
 const server = Bun.serve({
+  unix: FUNCD_HTTP_SOCKET,
   fetch: func.default.fetch,
 });
 
-socket.write(
-  JSON.stringify({ kind: "ready", payload: { port: server.port } }) + "\n",
-);
+socket.write(JSON.stringify({ kind: "ready" }) + "\n");

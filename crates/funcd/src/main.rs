@@ -16,7 +16,7 @@ async fn main() -> Result<()> {
     cfg.init_tracing();
 
     let (ready_tx, ready_rx) = oneshot::channel();
-    let socket = ipc::Socket::bind(&cfg.paths.socket, ready_tx)?;
+    let socket = ipc::Socket::bind(&cfg.paths.msg_socket, ready_tx)?;
     tokio::spawn(async move {
         if let Err(e) = socket.listen().await {
             error!("unix socket listener error: {}", e);
@@ -36,9 +36,9 @@ async fn main() -> Result<()> {
         }
     });
 
-    let upstream_port = match timeout(cfg.ready_timeout(), ready_rx).await {
-        Ok(Ok(port)) => port,
-        Ok(Err(e)) => anyhow::bail!("failed to receive server port: {}", e),
+    match timeout(cfg.ready_timeout(), ready_rx).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => anyhow::bail!("failed to start runtime: {}", e),
         Err(_) => anyhow::bail!(
             "timeout waiting for server port after {} seconds",
             cfg.ready_timeout_seconds
@@ -46,12 +46,8 @@ async fn main() -> Result<()> {
     };
     info!(dur = ?start.elapsed(), "runtime ready");
 
-    let proxy = Arc::new(server::Proxy::new("localhost".to_string(), upstream_port));
-    info!(
-        upstream = proxy.upstream,
-        streaming = cfg.response_streaming,
-        "initializing proxy"
-    );
+    let proxy = Arc::new(server::Proxy::new(cfg.paths.http_socket.clone())?);
+    info!(streaming = cfg.response_streaming, "initializing proxy");
 
     let res = if cfg.response_streaming {
         let svc_fn = lambda_http::service_fn(move |req| {
