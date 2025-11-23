@@ -13,18 +13,18 @@ use tracing::{debug, info, warn};
 #[serde(rename_all = "snake_case")]
 pub enum Message {
     Started,
-    Ready,
+    Ready { port: u16 },
     Error { error: String },
 }
 
 pub struct Socket {
     path: PathBuf,
     listener: UnixListener,
-    port_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+    port_tx: Arc<Mutex<Option<oneshot::Sender<u16>>>>,
 }
 
 impl Socket {
-    pub fn bind<P: AsRef<Path>>(path: P, ready_tx: oneshot::Sender<()>) -> Result<Self> {
+    pub fn bind<P: AsRef<Path>>(path: P, ready_tx: oneshot::Sender<u16>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
 
         if fs::metadata(&path).is_ok() {
@@ -77,18 +77,18 @@ impl Socket {
     }
 
     pub async fn handle_message(
-        port_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+        port_tx: Arc<Mutex<Option<oneshot::Sender<u16>>>>,
         message: Message,
     ) {
         info!(message = ?message, "received message");
 
         match message {
             Message::Started => {}
-            Message::Ready => {
+            Message::Ready { port } => {
                 if let Ok(mut guard) = port_tx.lock()
                     && let Some(tx) = guard.take()
                 {
-                    let _ = tx.send(());
+                    let _ = tx.send(port);
                 }
             }
             Message::Error { error } => {

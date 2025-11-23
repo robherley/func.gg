@@ -1,20 +1,14 @@
 mod config;
 mod ipc;
+mod responder;
 mod runtime;
-mod server;
 
-use anyhow::Result;
-use std::sync::Arc;
+use std::net::SocketAddr;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 use tracing::{error, info};
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    config::install_crypto()?;
-    let cfg = config::load()?;
-    cfg.init_tracing();
-
+async fn boot(cfg: &config::Config) -> anyhow::Result<()> {
     let (ready_tx, ready_rx) = oneshot::channel();
     let socket = ipc::Socket::bind(&cfg.paths.msg_socket, ready_tx)?;
     tokio::spawn(async move {
@@ -36,33 +30,40 @@ async fn main() -> Result<()> {
         }
     });
 
-    match timeout(cfg.ready_timeout(), ready_rx).await {
-        Ok(Ok(_)) => {}
+    let port = match timeout(cfg.ready_timeout(), ready_rx).await {
+        Ok(Ok(port)) => port,
         Ok(Err(e)) => anyhow::bail!("failed to start runtime: {}", e),
         Err(_) => anyhow::bail!(
             "timeout waiting for server to be ready after {} seconds",
             cfg.ready_timeout_seconds
         ),
     };
-    info!(dur = ?start.elapsed(), "runtime ready");
+    info!(dur = ?start.elapsed(), runtime_port = port, "runtime ready");
 
-    let proxy = Arc::new(server::Proxy::new(cfg.paths.http_socket.clone())?);
-    info!(streaming = cfg.response_streaming, "initializing proxy");
+    let remote: SocketAddr = "127.0.0.1:4433".parse()?;
 
-    let res = if cfg.response_streaming {
-        let svc_fn = lambda_http::service_fn(move |req| {
-            let proxy = Arc::clone(&proxy);
-            async move { proxy.handle_with_streaming_response(req).await }
-        });
-        lambda_http::run_with_streaming_response(svc_fn).await
-    } else {
-        let svc_fn = lambda_http::service_fn(move |req| {
-            let proxy = Arc::clone(&proxy);
-            async move { proxy.handle(req).await }
-        });
-        lambda_http::run(svc_fn).await
-    };
+    let tun = funnel::Client::new(remote).await?;
+    let tun_addr = format!("127.0.0.1:{}", port).parse()?;
 
-    res.map_err(|e| anyhow::anyhow!("lambda runtime error: {}", e))?;
+    if cfg.is_local() {
+        return tun.run(tun_addr).await;
+    }
+
+    tokio::spawn(async move {
+        if let Err(err) = tun.run(tun_addr).await {
+            error!("tunnel failed: {}", err)
+        }
+    });
+
     Ok(())
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    config::install_crypto()?;
+    let cfg = config::load()?;
+    cfg.init_tracing();
+
+    let result = boot(&cfg).await;
+    responder::respond(cfg.mode, result).await
 }
