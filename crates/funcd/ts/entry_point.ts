@@ -1,11 +1,7 @@
-const { FUNCD_MSG_SOCKET, FUNCD_HTTP_SOCKET, FUNCD_USER_SCRIPT } = process.env;
+const { FUNCD_MSG_SOCKET, FUNCD_USER_SCRIPT } = process.env;
 
 if (!FUNCD_MSG_SOCKET) {
   throw new Error("FUNCD_MSG_SOCKET is not defined");
-}
-
-if (!FUNCD_HTTP_SOCKET) {
-  throw new Error("FUNCD_HTTP_SOCKET is not defined");
 }
 
 if (!FUNCD_USER_SCRIPT) {
@@ -61,9 +57,12 @@ if (!func.default.fetch) {
   throw new Error("Func must export a fetch function");
 }
 
-Bun.serve({
-  unix: FUNCD_HTTP_SOCKET,
+const server = Bun.serve({
+  port: 0,
   fetch: func.default.fetch,
+  websocket: func.default.websocket,
 });
 
-socket.write(JSON.stringify({ kind: "ready" }) + "\n");
+socket.write(
+  JSON.stringify({ kind: "ready", payload: { port: server.port } }) + "\n",
+);

@@ -11,20 +11,26 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 const ENV_PREFIX: &str = "FUNCD_";
 const CONFIG_FILE: &str = "funcd.toml";
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum Mode {
+    Local,
+    Lambda,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     /// Log directive for the application, analogous to RUST_LOG
     pub log: String,
 
+    /// Mode to run the server in
+    pub mode: Mode,
+
     /// Runtime paths to sockets, binaries and scripts
     pub paths: Paths,
 
     /// Timeout in seconds for waiting for the runtime process to be ready
     pub ready_timeout_seconds: u64,
-
-    /// Enable response streaming
-    pub response_streaming: bool,
 }
 
 impl Config {
@@ -44,14 +50,18 @@ impl Config {
             )
             .init();
     }
+
+    pub fn is_local(&self) -> bool {
+        self.mode == Mode::Local
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             log: "info".to_string(),
+            mode: Mode::Local,
             ready_timeout_seconds: 5,
-            response_streaming: false,
             paths: Paths::default(),
         }
     }
@@ -62,7 +72,6 @@ impl Default for Config {
 pub struct Paths {
     pub bun: PathBuf,
     pub msg_socket: PathBuf,
-    pub http_socket: PathBuf,
     pub entry_point: PathBuf,
     pub user_script: PathBuf,
 }
@@ -72,7 +81,6 @@ impl Default for Paths {
         Self {
             bun: PathBuf::from("/opt/bun"),
             msg_socket: PathBuf::from("/tmp/funcd.msg.sock"),
-            http_socket: PathBuf::from("/tmp/funcd.http.sock"),
             entry_point: PathBuf::from("/var/task/entry_point.ts"),
             user_script: PathBuf::from("/var/task/user_script.ts"),
         }
